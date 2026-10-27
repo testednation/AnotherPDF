@@ -44,10 +44,19 @@ export default function App() {
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isExportingZip, setIsExportingZip] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [targetFieldId, setTargetFieldId] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleHeaderSelectField = (field: XFAField) => {
+    setTargetFieldId(field.id);
+    setActiveTab('preview');
+    const label = field.caption || field.name;
+    const page = field.bounds?.pageNumber || 1;
+    showToast(`Navigated to "${label}" (Page ${page})`);
   };
 
   // Helper to flatten all fields across subforms
@@ -454,6 +463,8 @@ export default function App() {
         resourceCount={resourceCount}
         preflightErrorsCount={preflightSummary.errorsCount}
         preflightWarningsCount={preflightSummary.warningsCount}
+        fields={allFields}
+        onSelectField={handleHeaderSelectField}
       />
 
       {/* Document Information & Control Toolbar */}
@@ -514,8 +525,11 @@ export default function App() {
             {activeTab === 'preview' && pdfBytes && (
               <PdfCanvasViewer
                 pdfBytes={pdfBytes}
+                filename={filename}
                 hasXfa={hasXfa}
                 fields={allFields}
+                subforms={subforms}
+                targetFieldId={targetFieldId}
                 onFieldValueChange={handleFieldValueChange}
                 onUpdateFieldAppearance={handleUpdateFieldAppearance}
                 onResetFieldAppearance={handleResetFieldAppearance}
@@ -529,6 +543,7 @@ export default function App() {
                 summary={preflightSummary}
                 onRerunPreflight={setPreflightProfile}
                 onJumpToField={fieldId => {
+                  setTargetFieldId(fieldId);
                   setActiveTab('preview');
                   showToast('Navigated to field in Visual Canvas');
                 }}

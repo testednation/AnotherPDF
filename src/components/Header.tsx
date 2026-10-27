@@ -1,6 +1,8 @@
 import React from 'react';
 import { FileText, Download, FolderArchive, ShieldCheck, FileSpreadsheet, Layers } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
+import { GlobalFieldSearch } from './GlobalFieldSearch';
+import { XFAField } from '../types/pdf';
 
 interface HeaderProps {
   activeTab: 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch';
@@ -13,6 +15,8 @@ interface HeaderProps {
   resourceCount: number;
   preflightErrorsCount?: number;
   preflightWarningsCount?: number;
+  fields?: XFAField[];
+  onSelectField?: (field: XFAField) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -26,9 +30,11 @@ export const Header: React.FC<HeaderProps> = ({
   resourceCount,
   preflightErrorsCount = 0,
   preflightWarningsCount = 0,
+  fields = [],
+  onSelectField,
 }) => {
   return (
-    <header className="flex items-center justify-between gap-8 px-6 py-3.5 bg-slate-900/90 border-b border-slate-800 backdrop-blur-md sticky top-0 z-40">
+    <header className="flex items-center justify-between gap-3 sm:gap-4 lg:gap-6 px-4 sm:px-6 py-3 bg-slate-900/90 border-b border-slate-800 backdrop-blur-md sticky top-0 z-40">
       {/* Zone 1: Single text element wordmark */}
       <div className="flex items-center gap-3 shrink-0">
         <div className="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-400">
@@ -159,8 +165,15 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
       </nav>
 
-      {/* Zone 3: Primary Actions & PWA Install */}
-      <div className="flex items-center gap-2.5 shrink-0">
+      {/* Zone 3: Global Field Search Bar */}
+      {onSelectField && (
+        <div className="w-36 sm:w-48 md:w-56 lg:w-72 xl:w-80 shrink-0">
+          <GlobalFieldSearch fields={fields} onSelectField={onSelectField} />
+        </div>
+      )}
+
+      {/* Zone 4: Primary Actions & PWA Install */}
+      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
         <PWAInstallButton />
 
         <button

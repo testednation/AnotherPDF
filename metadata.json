@@ -1,6 +1,6 @@
 {
   "name": "AcroXFA - XFA PDF Editor & Resource Extractor",
-  "description": "Inspect, edit, and fill XFA PDF forms, preflight documents, extract resources, batch-process multiple XFA PDFs to consolidated CSV/JSON/Excel, and convert offline.",
+  "description": "Inspect, edit, and fill XFA PDF forms, navigate fields via hierarchical subform tree, compare side-by-side, preflight, extract resources, and batch-process offline.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

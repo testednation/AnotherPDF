@@ -528,3 +528,204 @@ export async function createSampleMediaPdf(): Promise<Uint8Array> {
 
   return await pdfDoc.save();
 }
+
+/**
+ * Creates a revised sample XFA PDF (Revision B, 2 pages) for side-by-side comparison.
+ */
+export async function createSampleComparisonPdf(): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  // Page 1: Revised Enterprise Profile
+  const page1 = pdfDoc.addPage([612, 792]);
+  page1.drawText('Global Commerce & Trade Registry [REVISED - REV B]', {
+    x: 50,
+    y: 740,
+    size: 16,
+    font,
+    color: rgb(0.1, 0.4, 0.7),
+  });
+
+  page1.drawText('Form 842-XFA (Amended Filing - Tier 1 Enterprise Qualification)', {
+    x: 50,
+    y: 720,
+    size: 10,
+    font: regularFont,
+    color: rgb(0.3, 0.4, 0.5),
+  });
+
+  page1.drawLine({
+    start: { x: 50, y: 705 },
+    end: { x: 562, y: 705 },
+    thickness: 1.5,
+    color: rgb(0.2, 0.5, 0.8),
+  });
+
+  page1.drawText('1. Organization Profile & Entity Verification (Amended)', {
+    x: 50,
+    y: 675,
+    size: 12,
+    font,
+    color: rgb(0.12, 0.2, 0.35),
+  });
+
+  // Revised Company Name
+  page1.drawText('Company Legal Business Name (Updated)', { x: 50, y: 645, size: 8.5, font, color: rgb(0.3, 0.35, 0.45) });
+  page1.drawRectangle({ x: 50, y: 615, width: 340, height: 26, borderColor: rgb(0.2, 0.6, 0.9), borderWidth: 1.5, color: rgb(0.95, 0.98, 1) });
+  page1.drawText('Vanguard Meridian Global Holding Group, Inc.', { x: 56, y: 624, size: 9, font: regularFont, color: rgb(0.05, 0.2, 0.5) });
+
+  // Revised Tax ID
+  page1.drawText('Federal Tax ID / EIN', { x: 50, y: 595, size: 8.5, font, color: rgb(0.3, 0.35, 0.45) });
+  page1.drawRectangle({ x: 50, y: 565, width: 160, height: 26, borderColor: rgb(0.7, 0.78, 0.88), borderWidth: 1, color: rgb(0.98, 0.99, 1) });
+  page1.drawText('47-8921402', { x: 56, y: 574, size: 9, font: regularFont, color: rgb(0.1, 0.15, 0.25) });
+
+  // Revised Incorporation Date
+  page1.drawText('Incorporation Date', { x: 225, y: 595, size: 8.5, font, color: rgb(0.3, 0.35, 0.45) });
+  page1.drawRectangle({ x: 225, y: 565, width: 165, height: 26, borderColor: rgb(0.7, 0.78, 0.88), borderWidth: 1, color: rgb(0.98, 0.99, 1) });
+  page1.drawText('2021-06-18', { x: 231, y: 574, size: 9, font: regularFont, color: rgb(0.1, 0.15, 0.25) });
+
+  // Revised Entity Classification
+  page1.drawText('Entity Classification (Restructured)', { x: 50, y: 545, size: 8.5, font, color: rgb(0.3, 0.35, 0.45) });
+  page1.drawRectangle({ x: 50, y: 515, width: 220, height: 26, borderColor: rgb(0.2, 0.6, 0.9), borderWidth: 1.5, color: rgb(0.95, 0.98, 1) });
+  page1.drawText('Corporation (C-Corp Restructure)', { x: 56, y: 524, size: 9, font: regularFont, color: rgb(0.05, 0.2, 0.5) });
+
+  // Revised Publicly Traded
+  page1.drawText('Publicly Traded', { x: 285, y: 545, size: 8.5, font, color: rgb(0.3, 0.35, 0.45) });
+  page1.drawRectangle({ x: 285, y: 515, width: 105, height: 26, borderColor: rgb(0.7, 0.78, 0.88), borderWidth: 1, color: rgb(0.98, 0.99, 1) });
+  page1.drawText('[X] Yes (NASDAQ)', { x: 295, y: 524, size: 9, font: regularFont, color: rgb(0.1, 0.4, 0.2) });
+
+  // Section 2: Contact Info
+  page1.drawText('2. Executive & Regulatory Contact Information', {
+    x: 50,
+    y: 465,
+    size: 12,
+    font,
+    color: rgb(0.12, 0.2, 0.35),
+  });
+
+  page1.drawText('Primary Authorized Contact (Promoted)', { x: 50, y: 450, size: 8.5, font, color: rgb(0.3, 0.35, 0.45) });
+  page1.drawRectangle({ x: 50, y: 420, width: 340, height: 26, borderColor: rgb(0.7, 0.78, 0.88), borderWidth: 1, color: rgb(0.98, 0.99, 1) });
+  page1.drawText('Eleanor Vance (Chief Executive Officer)', { x: 56, y: 429, size: 9, font: regularFont, color: rgb(0.1, 0.15, 0.25) });
+
+  page1.drawText('Official Executive Email', { x: 50, y: 400, size: 8.5, font, color: rgb(0.3, 0.35, 0.45) });
+  page1.drawRectangle({ x: 50, y: 370, width: 220, height: 26, borderColor: rgb(0.7, 0.78, 0.88), borderWidth: 1, color: rgb(0.98, 0.99, 1) });
+  page1.drawText('ceo@vanguardmeridiangroup.com', { x: 56, y: 379, size: 8.5, font: regularFont, color: rgb(0.1, 0.15, 0.25) });
+
+  // Page 2: Supplemental Audit & Governance Addendum
+  const page2 = pdfDoc.addPage([612, 792]);
+  page2.drawText('Global Commerce Registry - Page 2 Addendum', {
+    x: 50,
+    y: 740,
+    size: 16,
+    font,
+    color: rgb(0.1, 0.4, 0.7),
+  });
+
+  page2.drawText('Supplemental Audit & Financial Compliance Attestation', {
+    x: 50,
+    y: 720,
+    size: 10,
+    font: regularFont,
+    color: rgb(0.3, 0.4, 0.5),
+  });
+
+  page2.drawLine({
+    start: { x: 50, y: 705 },
+    end: { x: 562, y: 705 },
+    thickness: 1,
+    color: rgb(0.8, 0.85, 0.9),
+  });
+
+  page2.drawText('3. Supplemental Audit Schedule & Capital Expenditure', {
+    x: 50,
+    y: 675,
+    size: 12,
+    font,
+    color: rgb(0.12, 0.2, 0.35),
+  });
+
+  page2.drawText('Approved Capital Allocation', { x: 50, y: 645, size: 8.5, font, color: rgb(0.3, 0.35, 0.45) });
+  page2.drawRectangle({ x: 50, y: 615, width: 200, height: 26, borderColor: rgb(0.7, 0.78, 0.88), borderWidth: 1, color: rgb(0.98, 0.99, 1) });
+  page2.drawText('$42,500,000.00 USD', { x: 56, y: 624, size: 9, font: regularFont, color: rgb(0.1, 0.5, 0.2) });
+
+  page2.drawText('Regulatory Auditor ID', { x: 270, y: 645, size: 8.5, font, color: rgb(0.3, 0.35, 0.45) });
+  page2.drawRectangle({ x: 270, y: 615, width: 180, height: 26, borderColor: rgb(0.7, 0.78, 0.88), borderWidth: 1, color: rgb(0.98, 0.99, 1) });
+  page2.drawText('AUD-8849-NY-2026', { x: 276, y: 624, size: 9, font: regularFont, color: rgb(0.1, 0.15, 0.25) });
+
+  page2.drawText('Officer Signature & Attestation', { x: 50, y: 550, size: 8.5, font, color: rgb(0.3, 0.35, 0.45) });
+  page2.drawRectangle({ x: 50, y: 500, width: 340, height: 40, borderColor: rgb(0.7, 0.78, 0.88), borderWidth: 1, color: rgb(0.98, 0.99, 1) });
+  page2.drawText('[Digitally Signed: Eleanor Vance, CEO / 2026-03-15 14:22:09 UTC]', { x: 56, y: 518, size: 8.5, font: regularFont, color: rgb(0.1, 0.4, 0.7) });
+
+  // Embed revised XFA packets
+  const templateXml = `<template xmlns="http://www.xfa.org/schema/xfa-template/3.3/">
+  <subform name="registryForm" layout="tb">
+    <subform name="companyProfile">
+      <field name="companyLegalName"><caption placement="top"><value><text>Company Legal Name (Updated)</text></value></caption><ui><textEdit/></ui></field>
+      <field name="federalTaxId"><caption placement="top"><value><text>Federal Tax ID / EIN</text></value></caption><ui><textEdit/></ui></field>
+      <field name="registrationDate"><caption placement="top"><value><text>Incorporation Date</text></value></caption><ui><dateTimeEdit/></ui></field>
+      <field name="businessStructure"><caption placement="top"><value><text>Entity Classification</text></value></caption><ui><choiceList/></ui></field>
+      <field name="isPubliclyTraded"><caption placement="top"><value><text>Publicly Traded</text></value></caption><ui><checkButton/></ui></field>
+    </subform>
+    <subform name="contactInfo">
+      <field name="primaryContactName"><caption placement="top"><value><text>Primary Contact Person</text></value></caption><ui><textEdit/></ui></field>
+      <field name="primaryEmailAddress"><caption placement="top"><value><text>Official Contact Email</text></value></caption><ui><textEdit/></ui></field>
+    </subform>
+    <subform name="addendumSchedule">
+      <field name="capitalBudget"><caption placement="top"><value><text>Approved Capital Allocation</text></value></caption><ui><numericEdit/></ui></field>
+      <field name="auditorId"><caption placement="top"><value><text>Regulatory Auditor ID</text></value></caption><ui><textEdit/></ui></field>
+      <field name="officerSignature"><caption placement="top"><value><text>Officer Digital Signature</text></value></caption><ui><signature/></ui></field>
+    </subform>
+  </subform>
+</template>`;
+
+  const datasetsXml = `<xfa:datasets xmlns:xfa="http://www.xfa.org/schema/xfa-data/1.0/">
+  <xfa:data>
+    <registryForm>
+      <companyProfile>
+        <companyLegalName>Vanguard Meridian Global Holding Group, Inc.</companyLegalName>
+        <federalTaxId>47-8921402</federalTaxId>
+        <registrationDate>2021-06-18</registrationDate>
+        <businessStructure>Corporation (C-Corp Restructure)</businessStructure>
+        <isPubliclyTraded>1</isPubliclyTraded>
+      </companyProfile>
+      <contactInfo>
+        <primaryContactName>Eleanor Vance (Chief Executive Officer)</primaryContactName>
+        <primaryEmailAddress>ceo@vanguardmeridiangroup.com</primaryEmailAddress>
+      </contactInfo>
+      <addendumSchedule>
+        <capitalBudget>$42,500,000.00 USD</capitalBudget>
+        <auditorId>AUD-8849-NY-2026</auditorId>
+        <officerSignature>Eleanor Vance / 2026-03-15</officerSignature>
+      </addendumSchedule>
+    </registryForm>
+  </xfa:data>
+</xfa:datasets>`;
+
+  const fullXdp = `<?xml version="1.0" encoding="UTF-8"?>
+<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/">
+  ${templateXml}
+  ${datasetsXml}
+</xdp:xdp>`;
+
+  const context = pdfDoc.context;
+  const xfaStream = context.flateStream(fullXdp);
+  const xfaStreamRef = context.register(xfaStream);
+
+  const xfaArray = context.obj([
+    PDFName.of('template'), context.register(context.flateStream(templateXml)),
+    PDFName.of('datasets'), context.register(context.flateStream(datasetsXml)),
+    PDFName.of('xdp:xdp'), xfaStreamRef,
+  ]);
+
+  const acroFormDict = context.obj({
+    Fields: [],
+    XFA: xfaArray,
+    NeedAppearances: true,
+  });
+
+  pdfDoc.catalog.set(PDFName.of('AcroForm'), context.register(acroFormDict));
+  pdfDoc.setTitle('Global Commerce Registry - Form 842-XFA (Revision B)');
+
+  return await pdfDoc.save();
+}
