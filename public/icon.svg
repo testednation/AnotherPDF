@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="none" stroke="#1e293b" stroke-width="4"/>
+  <!-- PDF Sheet Shape -->
+  <path d="M140 100 H300 L372 172 V412 H140 Z" fill="#1e293b" stroke="#334155" stroke-width="6" stroke-linejoin="round"/>
+  <!-- Fold corner -->
+  <path d="M300 100 V172 H372 Z" fill="#0ea5e9"/>
+  <!-- Form Field Lines -->
+  <rect x="180" y="210" width="152" height="24" rx="4" fill="none" stroke="#38bdf8" stroke-width="5"/>
+  <rect x="180" y="254" width="90" height="24" rx="4" fill="none" stroke="#38bdf8" stroke-width="5"/>
+  <rect x="286" y="254" width="46" height="24" rx="4" fill="none" stroke="#10b981" stroke-width="5"/>
+  <rect x="180" y="298" width="152" height="48" rx="6" fill="none" stroke="#a855f7" stroke-width="5" stroke-dasharray="8 6"/>
+  <!-- XFA Badge -->
+  <rect x="164" y="370" width="184" height="48" rx="8" fill="url(#accent)"/>
+  <text x="256" y="403" font-family="system-ui, -apple-system, sans-serif" font-size="26" font-weight="800" fill="#0f172a" text-anchor="middle" letter-spacing="3">ACRO·XFA</text>
+</svg>
