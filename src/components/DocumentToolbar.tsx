@@ -19,6 +19,8 @@ interface DocumentToolbarProps {
   onFileUpload: (file: File) => void;
   onLoadSampleXfa: () => void;
   onLoadSampleMedia: () => void;
+  onLoadCanadaBookFund?: () => void;
+  onOpenUrlModal?: () => void;
   onImportXml: (xmlString: string) => void;
   onExportXml: () => void;
   onExportJson: () => void;
@@ -34,6 +36,8 @@ export const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
   onFileUpload,
   onLoadSampleXfa,
   onLoadSampleMedia,
+  onLoadCanadaBookFund,
+  onOpenUrlModal,
   onImportXml,
   onExportXml,
   onExportJson,
@@ -163,7 +167,30 @@ export const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
             >
               Sample Media
             </button>
+            {onLoadCanadaBookFund && (
+              <>
+                <span className="text-slate-600 text-xs">|</span>
+                <button
+                  onClick={onLoadCanadaBookFund}
+                  className="px-2.5 py-1 text-xs font-semibold text-red-300 hover:text-white hover:bg-red-950/80 rounded transition-colors whitespace-nowrap flex items-center gap-1"
+                  title="Load official Canada Book Fund XFA Form (cBF-FinRepDatFrm-eng.pdf)"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                  <span>Canada Book Fund (cBF)</span>
+                </button>
+              </>
+            )}
           </div>
+
+          {onOpenUrlModal && (
+            <button
+              onClick={onOpenUrlModal}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md transition-colors"
+              title="Open document from direct web URL"
+            >
+              <span>From URL</span>
+            </button>
+          )}
 
           {/* Convert to Office Quick Trigger */}
           {onSwitchToConvert && (

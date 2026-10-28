@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Download, FolderArchive, ShieldCheck, FileSpreadsheet, Layers } from 'lucide-react';
+import { FileText, Download, FolderArchive, ShieldCheck, FileSpreadsheet, Layers, Keyboard } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { GlobalFieldSearch } from './GlobalFieldSearch';
 import { XFAField } from '../types/pdf';
@@ -17,6 +17,9 @@ interface HeaderProps {
   preflightWarningsCount?: number;
   fields?: XFAField[];
   onSelectField?: (field: XFAField) => void;
+  onOpenShortcuts?: () => void;
+  onSwitchToAcrobatUI?: () => void;
+  onLoadCanadaBookFund?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -32,6 +35,9 @@ export const Header: React.FC<HeaderProps> = ({
   preflightWarningsCount = 0,
   fields = [],
   onSelectField,
+  onOpenShortcuts,
+  onSwitchToAcrobatUI,
+  onLoadCanadaBookFund,
 }) => {
   return (
     <header className="flex items-center justify-between gap-3 sm:gap-4 lg:gap-6 px-4 sm:px-6 py-3 bg-slate-900/90 border-b border-slate-800 backdrop-blur-md sticky top-0 z-40">
@@ -54,6 +60,7 @@ export const Header: React.FC<HeaderProps> = ({
       <nav className="flex items-center gap-1 sm:gap-1.5 text-xs md:text-sm font-medium text-slate-300">
         <button
           onClick={() => setActiveTab('form')}
+          title="Visual Form Editor (Alt + 1)"
           className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
             activeTab === 'form'
               ? 'bg-slate-800 text-sky-400 font-semibold shadow-xs'
@@ -70,6 +77,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={() => setActiveTab('xml')}
+          title="XFA XML Data (Alt + 2)"
           className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'xml'
               ? 'bg-slate-800 text-sky-400 font-semibold shadow-xs'
@@ -81,6 +89,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={() => setActiveTab('preview')}
+          title="PDF Canvas & Fields (Alt + 3)"
           className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
             activeTab === 'preview'
               ? 'bg-slate-800 text-sky-400 font-semibold shadow-xs'
@@ -97,6 +106,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={() => setActiveTab('preflight')}
+          title="Preflight Audit (Alt + 4)"
           className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
             activeTab === 'preflight'
               ? 'bg-slate-800 text-sky-400 font-semibold shadow-xs'
@@ -120,6 +130,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={() => setActiveTab('convert')}
+          title="Document Conversion (Alt + 5)"
           className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
             activeTab === 'convert'
               ? 'bg-slate-800 text-sky-400 font-semibold shadow-xs'
@@ -135,6 +146,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={() => setActiveTab('resources')}
+          title="Extract Resources (Alt + 6)"
           className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
             activeTab === 'resources'
               ? 'bg-slate-800 text-sky-400 font-semibold shadow-xs'
@@ -151,6 +163,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={() => setActiveTab('batch')}
+          title="Batch Extract CSV / JSON (Alt + 7)"
           className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
             activeTab === 'batch'
               ? 'bg-slate-800 text-sky-400 font-semibold shadow-xs'
@@ -174,12 +187,38 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Zone 4: Primary Actions & PWA Install */}
       <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+        {onSwitchToAcrobatUI && (
+          <button
+            onClick={onSwitchToAcrobatUI}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors shadow-xs"
+            title="Switch to Adobe Acrobat Style UI"
+          >
+            <span className="w-2 h-2 rounded-full bg-white/90 animate-pulse" />
+            <span>Acrobat UI</span>
+          </button>
+        )}
+
         <PWAInstallButton />
+
+        {onOpenShortcuts && (
+          <button
+            onClick={onOpenShortcuts}
+            title="Keyboard Shortcuts (?)"
+            aria-label="Keyboard Shortcuts"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg transition-colors shrink-0"
+          >
+            <Keyboard className="w-3.5 h-3.5 text-sky-400" />
+            <span className="hidden xl:inline">Shortcuts</span>
+            <kbd className="hidden sm:inline-block px-1 py-0.2 bg-slate-900 border border-slate-700 text-[10px] rounded font-mono text-slate-400">
+              ?
+            </kbd>
+          </button>
+        )}
 
         <button
           onClick={onDownloadAllResources}
           disabled={isExportingZip}
-          title="Extract and download all images, fonts, attachments, and XML as a ZIP archive"
+          title="Extract and download all resources as ZIP (Ctrl+Shift+Z / ⇧⌘Z)"
           className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg transition-colors whitespace-nowrap shrink-0 disabled:opacity-50"
         >
           <FolderArchive className="w-3.5 h-3.5 text-sky-400" />
@@ -189,10 +228,14 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={onExportPdf}
           disabled={isExportingPdf}
+          title="Save & Export PDF (Ctrl+S / ⌘S)"
           className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-950 bg-sky-400 hover:bg-sky-300 active:bg-sky-500 rounded-lg transition-colors shadow-sm whitespace-nowrap shrink-0 disabled:opacity-50"
         >
           <Download className="w-3.5 h-3.5" />
           <span>{isExportingPdf ? 'Saving PDF...' : 'Export PDF'}</span>
+          <kbd className="hidden sm:inline-block ml-0.5 px-1 py-0.2 bg-sky-500/40 text-slate-950 rounded text-[10px] font-mono font-semibold">
+            ⌘S
+          </kbd>
         </button>
       </div>
     </header>

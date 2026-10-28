@@ -23,6 +23,52 @@ export interface XFAFieldAppearance {
   cornerRadius: number; // in px
 }
 
+export type ValidationSeverity = 'error' | 'warning' | 'info';
+
+export interface XFACrossFieldConstraint {
+  relatedFieldIds?: string[];
+  description: string;
+  type: 'sum_equals' | 'greater_than_or_equal' | 'required_if_checked' | 'balance_check';
+}
+
+export interface XFAValidationRule {
+  nullTest?: 'error' | 'warning' | 'disabled';
+  message?: string;
+  picturePattern?: string; // e.g. "date{YYYY-MM-DD}", "text{A9A 9A9}", "num{99999.99}"
+  regexPattern?: string;
+  minValue?: number;
+  maxValue?: number;
+  scriptExpr?: string; // FormCalc or JS validation script
+  businessConstraint?: string;
+  crossFieldConstraint?: XFACrossFieldConstraint;
+}
+
+export interface ValidationError {
+  id: string;
+  fieldId: string;
+  fieldName: string;
+  fieldCaption: string;
+  subformName?: string;
+  severity: ValidationSeverity;
+  ruleType:
+    | 'required'
+    | 'picture_pattern'
+    | 'regex'
+    | 'range'
+    | 'email'
+    | 'phone'
+    | 'postal_code'
+    | 'fiscal_year'
+    | 'financial_balance'
+    | 'script'
+    | 'cross_field'
+    | 'custom_logic';
+  message: string;
+  ruleDescription?: string;
+  expectedPattern?: string;
+  actualValue: string;
+}
+
 export interface XFAField {
   id: string;
   name: string;
@@ -35,11 +81,13 @@ export interface XFAField {
   options?: string[]; // for choiceList
   required?: boolean;
   readOnly?: boolean;
+  visibility?: 'visible' | 'invisible' | 'hidden';
   tooltip?: string;
   format?: string;
   rawXmlSnippet?: string;
   bounds?: XFABounds;
   appearance?: XFAFieldAppearance;
+  validation?: XFAValidationRule;
 }
 
 export interface XFASubform {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { XFAField } from '../types/pdf';
 import {
   Type,
@@ -8,7 +8,9 @@ import {
   Calendar,
   PenTool,
   HelpCircle,
+  AlertCircle,
 } from 'lucide-react';
+import { validateField } from '../utils/validationEngine';
 
 interface XfaFieldOverlayProps {
   fields: XFAField[];
@@ -40,6 +42,12 @@ export const XfaFieldOverlay: React.FC<XfaFieldOverlayProps> = ({
   typeFilter,
 }) => {
   const [hoveredFieldId, setHoveredFieldId] = useState<string | null>(null);
+
+  const allFieldsMap = useMemo(() => {
+    const map = new Map<string, XFAField>();
+    fields.forEach(f => map.set(f.id, f));
+    return map;
+  }, [fields]);
 
   if (!showBoundaries || canvasWidth <= 0 || canvasHeight <= 0) {
     return null;
@@ -96,10 +104,20 @@ export const XfaFieldOverlay: React.FC<XfaFieldOverlayProps> = ({
         const isHovered = hoveredFieldId === field.id;
 
         const appearance = field.appearance;
-        const borderColor = appearance?.borderColor || '#0284c7';
+        const fieldIssues = validateField(field, allFieldsMap);
+        const hasError = fieldIssues.some(e => e.severity === 'error');
+        const hasWarning = !hasError && fieldIssues.some(e => e.severity === 'warning');
+
+        const defaultBorderColor = appearance?.borderColor || '#0284c7';
+        const borderColor = hasError ? '#ef4444' : hasWarning ? '#f59e0b' : defaultBorderColor;
         const borderStyle = appearance?.borderStyle || 'solid';
         const borderWidth = (appearance?.borderWidth || 1.5) * (scale / 1.2);
-        const backgroundColor = appearance?.backgroundColor || 'rgba(2, 132, 199, 0.08)';
+        const defaultBg = appearance?.backgroundColor || 'rgba(2, 132, 199, 0.08)';
+        const backgroundColor = hasError
+          ? 'rgba(239, 68, 68, 0.12)'
+          : hasWarning
+          ? 'rgba(245, 158, 11, 0.12)'
+          : defaultBg;
         const cornerRadius = (appearance?.cornerRadius || 4) * (scale / 1.2);
 
         return (
@@ -114,6 +132,8 @@ export const XfaFieldOverlay: React.FC<XfaFieldOverlayProps> = ({
             className={`absolute pointer-events-auto cursor-pointer transition-all duration-150 group ${
               isSelected
                 ? 'ring-2 ring-sky-400 ring-offset-1 ring-offset-slate-900 shadow-lg z-30'
+                : hasError
+                ? 'ring-1 ring-rose-500 shadow-md z-20'
                 : isHovered
                 ? 'ring-1 ring-sky-400/80 shadow-md z-20'
                 : 'z-10'
@@ -141,6 +161,16 @@ export const XfaFieldOverlay: React.FC<XfaFieldOverlayProps> = ({
               </div>
             )}
 
+            {/* Validation Error Dot Indicator */}
+            {hasError && (
+              <div
+                className="absolute -top-2.5 -right-2 px-1 py-0.2 rounded-full text-[9px] font-mono font-bold bg-rose-600 text-white border border-rose-300 flex items-center justify-center shadow-xs"
+                title="Field violates XFA validation rule"
+              >
+                !
+              </div>
+            )}
+
             {/* Field Value Preview Inside Box */}
             <div className="w-full h-full p-1 overflow-hidden flex items-center">
               <span
@@ -162,7 +192,7 @@ export const XfaFieldOverlay: React.FC<XfaFieldOverlayProps> = ({
             {/* Hover Tooltip Card */}
             {isHovered && !isSelected && (
               <div
-                className="absolute left-0 bottom-full mb-1.5 z-40 bg-slate-900/95 border border-slate-700/80 rounded-lg p-2.5 shadow-2xl text-slate-100 min-w-[200px] pointer-events-none backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
+                className="absolute left-0 bottom-full mb-1.5 z-40 bg-slate-900/95 border border-slate-700/80 rounded-lg p-2.5 shadow-2xl text-slate-100 min-w-[200px] max-w-xs pointer-events-none backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
               >
                 <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5">
                   <span className="font-semibold text-xs text-sky-300 truncate">
@@ -177,6 +207,24 @@ export const XfaFieldOverlay: React.FC<XfaFieldOverlayProps> = ({
                   <div>Binding: <span className="text-slate-300 truncate">{field.dataRef || '-'}</span></div>
                   <div>Value: <span className="text-emerald-400 font-semibold">{field.value || '(empty)'}</span></div>
                 </div>
+
+                {/* Validation Errors in Tooltip */}
+                {fieldIssues.length > 0 && (
+                  <div className="mt-1.5 pt-1.5 border-t border-slate-800 space-y-1">
+                    {fieldIssues.map(issue => (
+                      <div
+                        key={issue.id}
+                        className={`text-[10px] flex items-start gap-1 ${
+                          issue.severity === 'error' ? 'text-rose-300' : 'text-amber-300'
+                        }`}
+                      >
+                        <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+                        <span>{issue.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="mt-1.5 text-[9px] text-sky-400/80">
                   Click to inspect properties &amp; edit appearance
                 </div>

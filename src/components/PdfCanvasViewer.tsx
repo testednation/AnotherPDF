@@ -460,6 +460,41 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
     }
   };
 
+  // Canvas keyboard navigation for PageUp, PageDown, Zoom
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl instanceof HTMLInputElement ||
+        activeEl instanceof HTMLTextAreaElement ||
+        activeEl instanceof HTMLSelectElement ||
+        (activeEl as HTMLElement)?.isContentEditable;
+
+      if (isInput) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === 'PageDown' || e.key === 'j' || e.key === 'J') {
+        e.preventDefault();
+        handlePrimaryNext();
+      } else if (e.key === 'PageUp' || e.key === 'k' || e.key === 'K') {
+        e.preventDefault();
+        handlePrimaryPrev();
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        handleZoomIn();
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        handleZoomOut();
+      } else if (e.key === '0') {
+        e.preventDefault();
+        handleResetZoom();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [primaryPage, primaryNumPages, secondaryPage, secondaryNumPages, viewMode, syncPageTurns]);
+
   return (
     <div className="max-w-7xl mx-auto py-5 px-4 sm:px-6 space-y-4">
       {/* Top Banner Notice */}

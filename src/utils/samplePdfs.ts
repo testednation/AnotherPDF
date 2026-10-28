@@ -729,3 +729,526 @@ export async function createSampleComparisonPdf(): Promise<Uint8Array> {
 
   return await pdfDoc.save();
 }
+
+/**
+ * Creates the authentic Canada Book Fund / Fonds du livre du Canada - Final Financial Report Data Form
+ * (cBF-FinRepDatFrm-eng.pdf) with Canadian Heritage branding, official XFA LiveCycle architecture,
+ * 2 multi-page layout, full calculations, datasets XML, and interactive form fields.
+ */
+export async function createCanadaBookFundXfaPdf(): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.create();
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontTimes = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+
+  // --- PAGE 1: Canadian Heritage Header & Identification & Revenues ---
+  const page1 = pdfDoc.addPage([612, 792]);
+
+  // Red government bar
+  page1.drawRectangle({
+    x: 0,
+    y: 778,
+    width: 612,
+    height: 14,
+    color: rgb(0.85, 0.12, 0.12),
+  });
+
+  // Canadian Heritage / Canada Book Fund branding
+  page1.drawText('Canadian Heritage / Patrimoine canadien', {
+    x: 45,
+    y: 755,
+    size: 11,
+    font: fontBold,
+    color: rgb(0.1, 0.1, 0.1),
+  });
+
+  page1.drawText('Canada Book Fund (CBF) / Fonds du livre du Canada (FLC)', {
+    x: 45,
+    y: 742,
+    size: 9.5,
+    font: fontReg,
+    color: rgb(0.35, 0.35, 0.35),
+  });
+
+  page1.drawText('Form: cBF-FinRepDatFrm-eng (Dynamic LiveCycle XFA)', {
+    x: 340,
+    y: 742,
+    size: 8.5,
+    font: fontReg,
+    color: rgb(0.5, 0.5, 0.5),
+  });
+
+  // Document Title
+  page1.drawRectangle({
+    x: 45,
+    y: 700,
+    width: 522,
+    height: 32,
+    color: rgb(0.95, 0.96, 0.98),
+    borderColor: rgb(0.8, 0.85, 0.9),
+    borderWidth: 1,
+  });
+
+  page1.drawText('FINAL FINANCIAL REPORT DATA FORM / FORMULAIRE DU RAPPORT FINANCIER', {
+    x: 55,
+    y: 718,
+    size: 10.5,
+    font: fontBold,
+    color: rgb(0.08, 0.15, 0.28),
+  });
+
+  page1.drawText('Support for Organizations & Publishers Stream - Project Final Financial Reconciliation', {
+    x: 55,
+    y: 707,
+    size: 8,
+    font: fontReg,
+    color: rgb(0.4, 0.45, 0.5),
+  });
+
+  // Section 1: Identification & Project Details
+  page1.drawText('SECTION 1: RECIPIENT IDENTIFICATION & AGREEMENT DETAILS', {
+    x: 45,
+    y: 680,
+    size: 9.5,
+    font: fontBold,
+    color: rgb(0.85, 0.12, 0.12),
+  });
+
+  // Recipient Legal Name
+  page1.drawText('Legal Name of Recipient / Raison sociale du bénéficiaire *', { x: 45, y: 663, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page1.drawRectangle({ x: 45, y: 638, width: 320, height: 22, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page1.drawText('Maple Leaf Literary Press & Publishing Ltd.', { x: 52, y: 645, size: 8.5, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  // CBF Agreement Number
+  page1.drawText('CBF Agreement No. / Numéro de l\'entente *', { x: 380, y: 663, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page1.drawRectangle({ x: 380, y: 638, width: 187, height: 22, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page1.drawText('CBF-2025-PCH-98421', { x: 387, y: 645, size: 8.5, font: fontBold, color: rgb(0.1, 0.2, 0.4) });
+
+  // Project Title
+  page1.drawText('Funded Project Title / Titre du projet subventionné', { x: 45, y: 623, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page1.drawRectangle({ x: 45, y: 598, width: 320, height: 22, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page1.drawText('Canadian Authors National Marketing & Digital E-Book Distribution Initiative', { x: 52, y: 605, size: 8, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  // Fiscal Year
+  page1.drawText('Fiscal Year / Exercice', { x: 380, y: 623, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page1.drawRectangle({ x: 380, y: 598, width: 85, height: 22, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page1.drawText('2025-2026', { x: 387, y: 605, size: 8.5, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  // Language
+  page1.drawText('Language of Choice', { x: 475, y: 623, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page1.drawRectangle({ x: 475, y: 598, width: 92, height: 22, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page1.drawText('English / Anglais', { x: 480, y: 605, size: 8, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  // Reporting Dates
+  page1.drawText('Reporting Period Start (YYYY-MM-DD)', { x: 45, y: 583, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page1.drawRectangle({ x: 45, y: 558, width: 150, height: 22, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page1.drawText('2025-04-01', { x: 52, y: 565, size: 8.5, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  page1.drawText('Reporting Period End (YYYY-MM-DD)', { x: 210, y: 583, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page1.drawRectangle({ x: 210, y: 558, width: 155, height: 22, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page1.drawText('2026-03-31', { x: 217, y: 565, size: 8.5, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  page1.drawText('Project Officer In Charge', { x: 380, y: 583, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page1.drawRectangle({ x: 380, y: 558, width: 187, height: 22, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page1.drawText('Jean-Luc Tremblay (PCH)', { x: 387, y: 565, size: 8.5, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  // Contact Info
+  page1.drawText('Contact Officer Name', { x: 45, y: 543, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page1.drawRectangle({ x: 45, y: 520, width: 180, height: 20, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page1.drawText('Sarah Jenkins, Managing Director', { x: 52, y: 526, size: 8, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  page1.drawText('Telephone', { x: 235, y: 543, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page1.drawRectangle({ x: 235, y: 520, width: 130, height: 20, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page1.drawText('+1 (613) 555-0188', { x: 242, y: 526, size: 8, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  page1.drawText('Email Address', { x: 380, y: 543, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page1.drawRectangle({ x: 380, y: 520, width: 187, height: 20, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page1.drawText('s.jenkins@mapleleafpress.ca', { x: 387, y: 526, size: 8, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  // Section 2: Revenues Table
+  page1.drawText('SECTION 2: PROJECT FINANCIAL SUMMARY - ACTUAL REVENUES (CAD $)', {
+    x: 45,
+    y: 490,
+    size: 9.5,
+    font: fontBold,
+    color: rgb(0.85, 0.12, 0.12),
+  });
+
+  const revRows = [
+    { label: 'Canada Book Fund (CBF) Contribution / Contribution du FLC', val: '$125,000.00' },
+    { label: 'Other Federal Government Funding / Autre financement fédéral', val: '$15,000.00' },
+    { label: 'Provincial / Territorial Funding (Ontario Creates / SODEC)', val: '$35,000.00' },
+    { label: 'Municipal Government Cultural Grants', val: '$5,000.00' },
+    { label: 'Private Sector Contributions, Corporate Sponsorships & Sales', val: '$48,500.00' },
+    { label: 'Organization Cash Contribution / Contribution en espèces', val: '$22,000.00' },
+    { label: 'Eligible In-Kind Contributions / Contributions en nature', val: '$8,500.00' },
+  ];
+
+  let yOffset = 470;
+  revRows.forEach((row, i) => {
+    page1.drawRectangle({
+      x: 45,
+      y: yOffset - 18,
+      width: 380,
+      height: 18,
+      color: i % 2 === 0 ? rgb(0.98, 0.98, 0.99) : rgb(1, 1, 1),
+      borderColor: rgb(0.85, 0.85, 0.88),
+      borderWidth: 0.5,
+    });
+    page1.drawText(row.label, { x: 50, y: yOffset - 13, size: 7.5, font: fontReg, color: rgb(0.2, 0.2, 0.2) });
+
+    page1.drawRectangle({
+      x: 425,
+      y: yOffset - 18,
+      width: 142,
+      height: 18,
+      borderColor: rgb(0.7, 0.75, 0.82),
+      borderWidth: 1,
+      color: rgb(0.99, 1, 1),
+    });
+    page1.drawText(row.val, { x: 490, y: yOffset - 13, size: 8, font: fontBold, color: rgb(0.1, 0.4, 0.2) });
+
+    yOffset -= 20;
+  });
+
+  // Total Revenue Row
+  page1.drawRectangle({
+    x: 45,
+    y: yOffset - 22,
+    width: 380,
+    height: 22,
+    color: rgb(0.92, 0.95, 0.98),
+    borderColor: rgb(0.7, 0.8, 0.9),
+    borderWidth: 1,
+  });
+  page1.drawText('TOTAL ACTUAL PROJECT REVENUE / REVENU TOTAL RÉEL (CAD $)', {
+    x: 50,
+    y: yOffset - 15,
+    size: 8,
+    font: fontBold,
+    color: rgb(0.08, 0.15, 0.28),
+  });
+
+  page1.drawRectangle({
+    x: 425,
+    y: yOffset - 22,
+    width: 142,
+    height: 22,
+    color: rgb(0.9, 0.96, 0.92),
+    borderColor: rgb(0.3, 0.6, 0.4),
+    borderWidth: 1.5,
+  });
+  page1.drawText('$259,000.00', { x: 485, y: yOffset - 15, size: 9, font: fontBold, color: rgb(0.05, 0.4, 0.15) });
+
+  page1.drawText('Page 1 of 2 - Canada Book Fund Financial Report (cBF-FinRepDatFrm-eng)', {
+    x: 45,
+    y: 30,
+    size: 7.5,
+    font: fontReg,
+    color: rgb(0.5, 0.5, 0.5),
+  });
+
+  // --- PAGE 2: Expenditures, Metrics & Declaration ---
+  const page2 = pdfDoc.addPage([612, 792]);
+
+  page2.drawRectangle({
+    x: 0,
+    y: 778,
+    width: 612,
+    height: 14,
+    color: rgb(0.85, 0.12, 0.12),
+  });
+
+  page2.drawText('SECTION 3: ELIGIBLE PROJECT EXPENDITURES & VARIANCE (CAD $)', {
+    x: 45,
+    y: 755,
+    size: 9.5,
+    font: fontBold,
+    color: rgb(0.85, 0.12, 0.12),
+  });
+
+  const expRows = [
+    { label: 'Direct Editorial, Proofreading & Translation Costs', val: '$58,400.00' },
+    { label: 'Production, Typesetting & Print Manufacturing', val: '$74,200.00' },
+    { label: 'Digital Technology, Accessible E-pub & Audio Production', val: '$32,600.00' },
+    { label: 'Marketing, Tour Promotion & National Book Campaign', val: '$49,800.00' },
+    { label: 'Professional, Legal & Accounting Audit Services', val: '$14,500.00' },
+    { label: 'Publishing Internship Stipends & Professional Training', val: '$28,000.00' },
+  ];
+
+  let yOffset2 = 735;
+  expRows.forEach((row, i) => {
+    page2.drawRectangle({
+      x: 45,
+      y: yOffset2 - 18,
+      width: 380,
+      height: 18,
+      color: i % 2 === 0 ? rgb(0.98, 0.98, 0.99) : rgb(1, 1, 1),
+      borderColor: rgb(0.85, 0.85, 0.88),
+      borderWidth: 0.5,
+    });
+    page2.drawText(row.label, { x: 50, y: yOffset2 - 13, size: 7.5, font: fontReg, color: rgb(0.2, 0.2, 0.2) });
+
+    page2.drawRectangle({
+      x: 425,
+      y: yOffset2 - 18,
+      width: 142,
+      height: 18,
+      borderColor: rgb(0.7, 0.75, 0.82),
+      borderWidth: 1,
+      color: rgb(0.99, 1, 1),
+    });
+    page2.drawText(row.val, { x: 490, y: yOffset2 - 13, size: 8, font: fontBold, color: rgb(0.6, 0.1, 0.1) });
+
+    yOffset2 -= 20;
+  });
+
+  // Total Expenditures
+  page2.drawRectangle({
+    x: 45,
+    y: yOffset2 - 22,
+    width: 380,
+    height: 22,
+    color: rgb(0.98, 0.94, 0.94),
+    borderColor: rgb(0.8, 0.4, 0.4),
+    borderWidth: 1,
+  });
+  page2.drawText('TOTAL ELIGIBLE EXPENDITURES / DÉPENSES TOTALES (CAD $)', {
+    x: 50,
+    y: yOffset2 - 15,
+    size: 8,
+    font: fontBold,
+    color: rgb(0.4, 0.1, 0.1),
+  });
+
+  page2.drawRectangle({
+    x: 425,
+    y: yOffset2 - 22,
+    width: 142,
+    height: 22,
+    color: rgb(0.98, 0.92, 0.92),
+    borderColor: rgb(0.8, 0.2, 0.2),
+    borderWidth: 1.5,
+  });
+  page2.drawText('$257,500.00', { x: 485, y: yOffset2 - 15, size: 9, font: fontBold, color: rgb(0.7, 0.1, 0.1) });
+
+  yOffset2 -= 28;
+
+  // Net Balance
+  page2.drawText('Net Project Balance (Revenues - Expenditures): +$1,500.00 (Balanced / Within Threshold)', {
+    x: 45,
+    y: yOffset2 - 10,
+    size: 8,
+    font: fontBold,
+    color: rgb(0.1, 0.5, 0.2),
+  });
+
+  yOffset2 -= 25;
+
+  // Variance Explanation
+  page2.drawText('Budget Variance Explanations & Notes (Required if variance exceeds 10%)', { x: 45, y: yOffset2, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page2.drawRectangle({ x: 45, y: yOffset2 - 42, width: 522, height: 38, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page2.drawText('All expenditures matched approved Canada Book Fund schedules. Increased digital e-pub output resulted\nin 8% variance reallocated from physical print overrun to accessible digital audio book formats.', { x: 52, y: yOffset2 - 18, size: 7.5, font: fontReg, color: rgb(0.2, 0.25, 0.35) });
+
+  yOffset2 -= 65;
+
+  // Section 4: Quantitative Results
+  page2.drawText('SECTION 4: PERFORMANCE MEASUREMENT & RESULTS', {
+    x: 45,
+    y: yOffset2,
+    size: 9.5,
+    font: fontBold,
+    color: rgb(0.85, 0.12, 0.12),
+  });
+
+  yOffset2 -= 18;
+
+  page2.drawText('Canadian Titles Published/Promoted', { x: 45, y: yOffset2, size: 7.5, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page2.drawRectangle({ x: 45, y: yOffset2 - 20, width: 155, height: 18, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page2.drawText('18 Canadian Titles', { x: 50, y: yOffset2 - 15, size: 8, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  page2.drawText('Print Copies Produced', { x: 215, y: yOffset2, size: 7.5, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page2.drawRectangle({ x: 215, y: yOffset2 - 20, width: 155, height: 18, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page2.drawText('42,500 Units', { x: 220, y: yOffset2 - 15, size: 8, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  page2.drawText('Digital / Audio Units Sold', { x: 385, y: yOffset2, size: 7.5, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page2.drawRectangle({ x: 385, y: yOffset2 - 20, width: 182, height: 18, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page2.drawText('19,840 Digital Units', { x: 390, y: yOffset2 - 15, size: 8, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  yOffset2 -= 45;
+
+  // Section 5: Official Declaration & Sign-off
+  page2.drawText('SECTION 5: OFFICIAL DECLARATION & SIGN-OFF', {
+    x: 45,
+    y: yOffset2,
+    size: 9.5,
+    font: fontBold,
+    color: rgb(0.85, 0.12, 0.12),
+  });
+
+  page2.drawText('I hereby certify that the information provided in this final financial report is accurate, complete, and all expenditures were', { x: 45, y: yOffset2 - 16, size: 7.5, font: fontReg, color: rgb(0.3, 0.3, 0.3) });
+  page2.drawText('incurred directly in support of the funded project in full accordance with the Canada Book Fund Contribution Agreement.', { x: 45, y: yOffset2 - 26, size: 7.5, font: fontReg, color: rgb(0.3, 0.3, 0.3) });
+
+  yOffset2 -= 45;
+
+  page2.drawText('Authorized Signatory Name *', { x: 45, y: yOffset2, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page2.drawRectangle({ x: 45, y: yOffset2 - 22, width: 200, height: 20, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page2.drawText('Sarah Jenkins', { x: 52, y: yOffset2 - 16, size: 8.5, font: fontBold, color: rgb(0.1, 0.2, 0.4) });
+
+  page2.drawText('Signatory Title *', { x: 260, y: yOffset2, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page2.drawRectangle({ x: 260, y: yOffset2 - 22, width: 170, height: 20, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page2.drawText('Managing Director & Publisher', { x: 267, y: yOffset2 - 16, size: 8.5, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  page2.drawText('Date (YYYY-MM-DD) *', { x: 445, y: yOffset2, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page2.drawRectangle({ x: 445, y: yOffset2 - 22, width: 122, height: 20, borderColor: rgb(0.7, 0.75, 0.82), borderWidth: 1, color: rgb(0.99, 1, 1) });
+  page2.drawText('2026-03-24', { x: 452, y: yOffset2 - 16, size: 8.5, font: fontReg, color: rgb(0.1, 0.15, 0.25) });
+
+  yOffset2 -= 45;
+
+  page2.drawText('Official Digital Signature Block', { x: 45, y: yOffset2, size: 8, font: fontBold, color: rgb(0.2, 0.2, 0.2) });
+  page2.drawRectangle({ x: 45, y: yOffset2 - 35, width: 522, height: 32, borderColor: rgb(0.85, 0.12, 0.12), borderWidth: 1, color: rgb(0.99, 0.98, 0.98) });
+  page2.drawText('Sarah Jenkins [Verified Digital Signature - Canadian Heritage Portal]', { x: 55, y: yOffset2 - 20, size: 9, font: fontTimes, color: rgb(0.7, 0.1, 0.1) });
+  page2.drawText('SHA-256 Digest: 8f4b1e92c73081a4e5d6f839c011e74a82d5e6f3b0c9a1d4 / Timestamped: 2026-03-24 16:33:02 EDT', { x: 55, y: yOffset2 - 30, size: 6.5, font: fontReg, color: rgb(0.4, 0.4, 0.4) });
+
+  page2.drawText('Page 2 of 2 - Canada Book Fund Financial Report (cBF-FinRepDatFrm-eng)', {
+    x: 45,
+    y: 30,
+    size: 7.5,
+    font: fontReg,
+    color: rgb(0.5, 0.5, 0.5),
+  });
+
+  // --- XML Packets for Canada Book Fund Form ---
+  const templateXml = `<template xmlns="http://www.xfa.org/schema/xfa-template/3.3/">
+  <subform name="canadaBookFundReport" layout="tb">
+    <subform name="recipientIdentification">
+      <field name="recipientLegalName"><caption placement="top"><value><text>Legal Name of Recipient / Raison sociale du bénéficiaire</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><message><text>Recipient legal organization name is mandatory.</text></message></validate></field>
+      <field name="cbfAgreementNumber"><caption placement="top"><value><text>CBF Agreement No. / Numéro de l'entente</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><picture>text{CBF-9999-XXX-99999}</picture><message><text>Agreement number must follow official format (e.g., CBF-2025-PCH-98421).</text></message></validate></field>
+      <field name="projectTitle"><caption placement="top"><value><text>Funded Project Title / Titre du projet subventionné</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><message><text>Project Title is required.</text></message></validate></field>
+      <field name="fiscalYear"><caption placement="top"><value><text>Fiscal Year / Exercice</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><picture>text{9999-9999}</picture><message><text>Fiscal Year must follow YYYY-YYYY format (e.g., 2025-2026).</text></message></validate></field>
+      <field name="languageOfChoice"><caption placement="top"><value><text>Official Language of Choice</text></value></caption><ui><choiceList/></ui><items><text>English</text><text>French</text><text>Bilingual</text></items></field>
+      <field name="reportingPeriodStart"><caption placement="top"><value><text>Reporting Period Start Date</text></value></caption><ui><dateTimeEdit/></ui><validate><picture>date{YYYY-MM-DD}</picture></validate></field>
+      <field name="reportingPeriodEnd"><caption placement="top"><value><text>Reporting Period End Date</text></value></caption><ui><dateTimeEdit/></ui><validate><picture>date{YYYY-MM-DD}</picture></validate></field>
+      <field name="projectOfficerName"><caption placement="top"><value><text>Project Officer In Charge</text></value></caption><ui><textEdit/></ui></field>
+      <field name="contactOfficerName"><caption placement="top"><value><text>Contact Officer Name</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><message><text>Contact Officer Name is required.</text></message></validate></field>
+      <field name="contactPhone"><caption placement="top"><value><text>Telephone</text></value></caption><ui><textEdit/></ui><validate><picture>text{(999) 999-9999}</picture><message><text>Telephone must follow (XXX) XXX-XXXX format.</text></message></validate></field>
+      <field name="contactEmail"><caption placement="top"><value><text>Contact Email Address</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><message><text>Valid recipient email address is required.</text></message></validate></field>
+    </subform>
+    <subform name="projectRevenues">
+      <field name="cbfContribution"><caption placement="top"><value><text>Canada Book Fund (CBF) Contribution</text></value></caption><ui><numericEdit/></ui><validate nullTest="error"><message><text>CBF Contribution amount cannot be blank.</text></message></validate></field>
+      <field name="otherFederalGrants"><caption placement="top"><value><text>Other Federal Government Funding</text></value></caption><ui><numericEdit/></ui></field>
+      <field name="provincialFunding"><caption placement="top"><value><text>Provincial / Territorial Funding</text></value></caption><ui><numericEdit/></ui></field>
+      <field name="municipalFunding"><caption placement="top"><value><text>Municipal Cultural Grants</text></value></caption><ui><numericEdit/></ui></field>
+      <field name="privateRevenues"><caption placement="top"><value><text>Private Sector Contributions &amp; Sales</text></value></caption><ui><numericEdit/></ui></field>
+      <field name="publisherOwnCash"><caption placement="top"><value><text>Organization Cash Contribution</text></value></caption><ui><numericEdit/></ui></field>
+      <field name="inKindAmount"><caption placement="top"><value><text>Eligible In-Kind Contributions</text></value></caption><ui><numericEdit/></ui></field>
+      <field name="totalActualRevenues"><caption placement="top"><value><text>TOTAL ACTUAL PROJECT REVENUE (CAD $)</text></value></caption><ui><numericEdit/></ui><validate nullTest="error"><script>Sum(cbfContribution, otherFederalGrants, provincialFunding, municipalFunding, privateRevenues, publisherOwnCash, inKindAmount)</script><message><text>Total revenues must equal the sum of line items.</text></message></validate></field>
+    </subform>
+    <subform name="projectExpenditures">
+      <field name="editorialCosts"><caption placement="top"><value><text>Direct Editorial &amp; Translation Costs</text></value></caption><ui><numericEdit/></ui></field>
+      <field name="productionCosts"><caption placement="top"><value><text>Production &amp; Print Manufacturing</text></value></caption><ui><numericEdit/></ui></field>
+      <field name="digitalTechnologyCosts"><caption placement="top"><value><text>Digital E-pub &amp; Audio Production</text></value></caption><ui><numericEdit/></ui></field>
+      <field name="marketingPromotionCosts"><caption placement="top"><value><text>Marketing &amp; National Promotion</text></value></caption><ui><numericEdit/></ui></field>
+      <field name="professionalFees"><caption placement="top"><value><text>Professional Accounting &amp; Audit Fees</text></value></caption><ui><numericEdit/></ui></field>
+      <field name="internshipSalaries"><caption placement="top"><value><text>Publishing Internship Stipends</text></value></caption><ui><numericEdit/></ui></field>
+      <field name="totalActualExpenditures"><caption placement="top"><value><text>TOTAL ELIGIBLE EXPENDITURES (CAD $)</text></value></caption><ui><numericEdit/></ui><validate nullTest="error"><script>Sum(editorialCosts, productionCosts, digitalTechnologyCosts, marketingPromotionCosts, professionalFees, internshipSalaries)</script><message><text>Total expenditures must equal the sum of expense categories.</text></message></validate></field>
+      <field name="netVarianceAmount"><caption placement="top"><value><text>Net Project Balance (Surplus/Deficit)</text></value></caption><ui><textEdit/></ui><validate><message><text>Net balance must equal Total Revenues minus Total Expenditures.</text></message></validate></field>
+      <field name="varianceExplanations"><caption placement="top"><value><text>Budget Variance Explanations &amp; Notes</text></value></caption><ui><textEdit multiLine="1"/></ui></field>
+    </subform>
+    <subform name="performanceMetrics">
+      <field name="titlesPublished"><caption placement="top"><value><text>Canadian Titles Published / Promoted</text></value></caption><ui><textEdit/></ui><validate><message><text>Number of published titles cannot be negative.</text></message></validate></field>
+      <field name="printCopiesProduced"><caption placement="top"><value><text>Print Copies Produced</text></value></caption><ui><textEdit/></ui></field>
+      <field name="digitalUnitsSold"><caption placement="top"><value><text>Digital / Audio Units Sold</text></value></caption><ui><textEdit/></ui></field>
+    </subform>
+    <subform name="certificationDeclaration">
+      <field name="authorizedSignatoryName"><caption placement="top"><value><text>Authorized Signatory Legal Name</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><message><text>Authorized Signatory Name is required for certification.</text></message></validate></field>
+      <field name="signatoryTitle"><caption placement="top"><value><text>Signatory Official Title</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><message><text>Signatory Title is required.</text></message></validate></field>
+      <field name="signatureDate"><caption placement="top"><value><text>Certification Date</text></value></caption><ui><dateTimeEdit/></ui><validate nullTest="error"><picture>date{YYYY-MM-DD}</picture><message><text>Date must be in YYYY-MM-DD format.</text></message></validate></field>
+      <field name="authorizedSignature"><caption placement="top"><value><text>Digital Electronic Signature Block</text></value></caption><ui><signature/></ui><validate nullTest="error"><message><text>Electronic signature is required to submit final report.</text></message></validate></field>
+    </subform>
+  </subform>
+</template>`;
+
+  const datasetsXml = `<xfa:datasets xmlns:xfa="http://www.xfa.org/schema/xfa-data/1.0/">
+  <xfa:data>
+    <canadaBookFundReport>
+      <recipientIdentification>
+        <recipientLegalName>Maple Leaf Literary Press &amp; Publishing Ltd.</recipientLegalName>
+        <cbfAgreementNumber>CBF-2025-PCH-98421</cbfAgreementNumber>
+        <projectTitle>Canadian Authors National Marketing &amp; Digital E-Book Distribution Initiative</projectTitle>
+        <fiscalYear>2025-2026</fiscalYear>
+        <languageOfChoice>English</languageOfChoice>
+        <reportingPeriodStart>2025-04-01</reportingPeriodStart>
+        <reportingPeriodEnd>2026-03-31</reportingPeriodEnd>
+        <projectOfficerName>Jean-Luc Tremblay (PCH)</projectOfficerName>
+        <contactOfficerName>Sarah Jenkins, Managing Director</contactOfficerName>
+        <contactPhone>+1 (613) 555-0188</contactPhone>
+        <contactEmail>s.jenkins@mapleleafpress.ca</contactEmail>
+      </recipientIdentification>
+      <projectRevenues>
+        <cbfContribution>125000.00</cbfContribution>
+        <otherFederalGrants>15000.00</otherFederalGrants>
+        <provincialFunding>35000.00</provincialFunding>
+        <municipalFunding>5000.00</municipalFunding>
+        <privateRevenues>48500.00</privateRevenues>
+        <publisherOwnCash>22000.00</publisherOwnCash>
+        <inKindAmount>8500.00</inKindAmount>
+        <totalActualRevenues>259000.00</totalActualRevenues>
+      </projectRevenues>
+      <projectExpenditures>
+        <editorialCosts>58400.00</editorialCosts>
+        <productionCosts>74200.00</productionCosts>
+        <digitalTechnologyCosts>32600.00</digitalTechnologyCosts>
+        <marketingPromotionCosts>49800.00</marketingPromotionCosts>
+        <professionalFees>14500.00</professionalFees>
+        <internshipSalaries>28000.00</internshipSalaries>
+        <totalActualExpenditures>257500.00</totalActualExpenditures>
+        <netVarianceAmount>+1500.00 CAD</netVarianceAmount>
+        <varianceExplanations>All expenditures matched approved Canada Book Fund schedules. Increased digital e-pub output resulted in 8% variance reallocated from physical print overrun to accessible digital audio book formats.</varianceExplanations>
+      </projectExpenditures>
+      <performanceMetrics>
+        <titlesPublished>18 Canadian Titles</titlesPublished>
+        <printCopiesProduced>42500 Units</printCopiesProduced>
+        <digitalUnitsSold>19840 Digital Units</digitalUnitsSold>
+      </performanceMetrics>
+      <certificationDeclaration>
+        <authorizedSignatoryName>Sarah Jenkins</authorizedSignatoryName>
+        <signatoryTitle>Managing Director &amp; Publisher</signatoryTitle>
+        <signatureDate>2026-03-24</signatureDate>
+        <authorizedSignature>Sarah Jenkins [Verified Digital Signature - Canadian Heritage Portal]</authorizedSignature>
+      </certificationDeclaration>
+    </canadaBookFundReport>
+  </xfa:data>
+</xfa:datasets>`;
+
+  const fullXdp = `<?xml version="1.0" encoding="UTF-8"?>
+<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/">
+  ${templateXml}
+  ${datasetsXml}
+</xdp:xdp>`;
+
+  const context = pdfDoc.context;
+  const xfaStream = context.flateStream(fullXdp);
+  const xfaStreamRef = context.register(xfaStream);
+
+  const xfaArray = context.obj([
+    PDFName.of('template'), context.register(context.flateStream(templateXml)),
+    PDFName.of('datasets'), context.register(context.flateStream(datasetsXml)),
+    PDFName.of('xdp:xdp'), xfaStreamRef,
+  ]);
+
+  const acroFormDict = context.obj({
+    Fields: [],
+    XFA: xfaArray,
+    NeedAppearances: true,
+  });
+
+  pdfDoc.catalog.set(PDFName.of('AcroForm'), context.register(acroFormDict));
+  pdfDoc.setTitle('Canada Book Fund - Final Financial Report Data Form (cBF-FinRepDatFrm-eng)');
+  pdfDoc.setAuthor('Canadian Heritage / Patrimoine canadien');
+  pdfDoc.setSubject('Canada Book Fund (CBF) - Support for Organizations Stream');
+  pdfDoc.setProducer('Adobe LiveCycle Designer 11.0 / AcroXFA Dynamic Engine');
+
+  return await pdfDoc.save();
+}
+

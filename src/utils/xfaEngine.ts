@@ -541,9 +541,46 @@ function parseFieldsFromElement(
       tooltip = speakElem?.textContent?.trim() || '';
     }
 
-    // Required check
+    // Required & Validation check
     const validateElem = fElem.getElementsByTagName('validate')[0];
-    const isRequired = validateElem?.getAttribute('nullTest') === 'error';
+    const nullTestAttr = validateElem?.getAttribute('nullTest');
+    const isRequired = nullTestAttr === 'error' || fElem.getAttribute('mandatory') === 'error';
+
+    // Parse message, picture clause, script
+    let valMessage: string | undefined = undefined;
+    let picturePattern: string | undefined = undefined;
+    let scriptExpr: string | undefined = undefined;
+
+    if (validateElem) {
+      const msgElem = validateElem.getElementsByTagName('message')[0];
+      if (msgElem) {
+        valMessage = msgElem.getElementsByTagName('text')[0]?.textContent?.trim() || msgElem.textContent?.trim() || undefined;
+      }
+      const picElem = validateElem.getElementsByTagName('picture')[0];
+      if (picElem) {
+        picturePattern = picElem.textContent?.trim() || undefined;
+      }
+      const scriptElem = validateElem.getElementsByTagName('script')[0];
+      if (scriptElem) {
+        scriptExpr = scriptElem.textContent?.trim() || undefined;
+      }
+    }
+
+    // Also check <format><picture>
+    if (!picturePattern) {
+      const formatElem = fElem.getElementsByTagName('format')[0];
+      if (formatElem) {
+        const pic = formatElem.getElementsByTagName('picture')[0];
+        if (pic) picturePattern = pic.textContent?.trim() || undefined;
+      }
+    }
+
+    const validationRule: import('../types/pdf').XFAValidationRule | undefined = (validateElem || picturePattern || isRequired) ? {
+      nullTest: nullTestAttr === 'error' ? 'error' : (nullTestAttr === 'warning' ? 'warning' : (isRequired ? 'error' : undefined)),
+      message: valMessage,
+      picturePattern,
+      scriptExpr,
+    } : undefined;
 
     // Parse geometry bounds
     const rawX = fElem.getAttribute('x') || undefined;
@@ -602,10 +639,12 @@ function parseFieldsFromElement(
       options: options.length > 0 ? options : undefined,
       required: isRequired,
       readOnly: fElem.getAttribute('access') === 'readOnly',
+      visibility: (fElem.getAttribute('presence') as 'visible' | 'invisible' | 'hidden') || 'visible',
       tooltip: tooltip || undefined,
       rawXmlSnippet: new XMLSerializer().serializeToString(fElem),
       bounds,
       appearance,
+      validation: validationRule,
     });
   });
 
@@ -859,4 +898,69 @@ export function exportDataAsFile(content: string, filename: string, mimeType: st
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+export interface BulkTemplateFieldUpdate {
+  fieldName: string;
+  readOnly?: boolean;
+  visibility?: 'visible' | 'invisible' | 'hidden';
+  required?: boolean;
+}
+
+/**
+ * Updates properties (readOnly, visibility, required) for multiple fields in the XFA template XML
+ */
+export function updateBulkFieldsInTemplate(
+  templateXml: string | undefined,
+  updates: BulkTemplateFieldUpdate[]
+): string {
+  if (!templateXml || updates.length === 0) return templateXml || '';
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(templateXml, 'application/xml');
+    const fields = Array.from(doc.getElementsByTagName('field'));
+    const fieldMap = new Map<string, Element>();
+    fields.forEach(f => {
+      const name = f.getAttribute('name');
+      if (name) fieldMap.set(name, f);
+    });
+
+    updates.forEach(up => {
+      const target = fieldMap.get(up.fieldName);
+      if (!target) return;
+
+      if (up.readOnly !== undefined) {
+        if (up.readOnly) {
+          target.setAttribute('access', 'readOnly');
+        } else {
+          target.setAttribute('access', 'open');
+        }
+      }
+
+      if (up.visibility !== undefined) {
+        target.setAttribute('presence', up.visibility);
+      }
+
+      if (up.required !== undefined) {
+        let validateElem = target.getElementsByTagName('validate')[0];
+        if (up.required) {
+          if (!validateElem) {
+            validateElem = doc.createElement('validate');
+            target.appendChild(validateElem);
+          }
+          validateElem.setAttribute('nullTest', 'error');
+        } else {
+          if (validateElem) {
+            validateElem.setAttribute('nullTest', 'disabled');
+          }
+        }
+      }
+    });
+
+    return new XMLSerializer().serializeToString(doc);
+  } catch (err) {
+    console.warn('Failed to update bulk fields in template XML:', err);
+    return templateXml;
+  }
 }

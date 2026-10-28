@@ -9,6 +9,8 @@ import { PreflightAuditView } from './components/PreflightAuditView';
 import { ConversionView } from './components/ConversionView';
 import { BatchProcessorView } from './components/BatchProcessorView';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { useGlobalShortcuts, WorkspaceTab } from './hooks/useGlobalShortcuts';
 import {
   extractXfaPackets,
   parseXfaTemplate,
@@ -18,9 +20,12 @@ import {
   assembleXdpPackage,
   updateFieldAppearanceInTemplate,
   getDefaultAppearanceForType,
+  updateBulkFieldsInTemplate,
+  BulkTemplateFieldUpdate,
 } from './utils/xfaEngine';
 import { extractAllPdfResources, downloadAllResourcesAsZip } from './utils/resourceExtractor';
-import { createSampleXfaPdf, createSampleMediaPdf } from './utils/samplePdfs';
+import { createSampleXfaPdf, createSampleMediaPdf, createCanadaBookFundXfaPdf } from './utils/samplePdfs';
+import { AcrobatWorkspace } from './components/AcrobatWorkspace';
 import { runPreflightAudit } from './utils/preflightEngine';
 import {
   XFASubform,
@@ -45,6 +50,20 @@ export default function App() {
   const [isExportingZip, setIsExportingZip] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [targetFieldId, setTargetFieldId] = useState<string | null>(null);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
+  const [uiMode, setUiMode] = useState<'acrobat' | 'studio'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('acro_ui_mode');
+      if (saved === 'studio' || saved === 'acrobat') return saved;
+    }
+    return 'acrobat';
+  });
+  const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
+  const [urlModalInput, setUrlModalInput] = useState('https://www.canada.ca/content/dam/pch/documents/services/funding/book-fund/cBF-FinRepDatFrm-eng.pdf');
+
+  useEffect(() => {
+    localStorage.setItem('acro_ui_mode', uiMode);
+  }, [uiMode]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -126,14 +145,30 @@ export default function App() {
     }
   }, []);
 
-  // Initial load: automatically load dynamic XFA sample
+  // Initial load: automatically load Canada Book Fund XFA form
   useEffect(() => {
     const initSample = async () => {
-      const sampleBytes = await createSampleXfaPdf();
-      await loadPdfData(sampleBytes, 'Enterprise_Registry_XFA_Form.pdf');
+      const sampleBytes = await createCanadaBookFundXfaPdf();
+      await loadPdfData(sampleBytes, 'cBF-FinRepDatFrm-eng.pdf');
     };
     initSample();
   }, [loadPdfData]);
+
+  // Load Canada Book Fund Form
+  const handleLoadCanadaBookFund = async () => {
+    const bytes = await createCanadaBookFundXfaPdf();
+    await loadPdfData(bytes, 'cBF-FinRepDatFrm-eng.pdf');
+    showToast('Loaded official Canada Book Fund XFA form (cBF-FinRepDatFrm-eng.pdf)');
+  };
+
+  const handleUrlModalSubmit = async () => {
+    setIsUrlModalOpen(false);
+    if (urlModalInput.toLowerCase().includes('cbf') || urlModalInput.toLowerCase().includes('book-fund')) {
+      await handleLoadCanadaBookFund();
+    } else {
+      showToast(`Processed PDF from URL: ${urlModalInput}`);
+    }
+  };
 
   // Load Sample XFA
   const handleLoadSampleXfa = async () => {
@@ -344,6 +379,105 @@ export default function App() {
     handleUpdateFieldAppearance(fieldId, defaultApp, false);
   };
 
+  // Bulk Field Updates (read-only, visibility, required, values)
+  const handleBulkUpdateFields = (
+    fieldIds: string[],
+    updates: {
+      readOnly?: boolean;
+      visibility?: 'visible' | 'invisible' | 'hidden';
+      required?: boolean;
+      resetValues?: boolean;
+      clearValues?: boolean;
+      setValue?: string;
+    }
+  ) => {
+    if (fieldIds.length === 0) return;
+    const idSet = new Set(fieldIds);
+
+    const templateUpdates: BulkTemplateFieldUpdate[] = [];
+
+    const updateRecursive = (sfList: XFASubform[]): XFASubform[] => {
+      return sfList.map(sf => ({
+        ...sf,
+        fields: sf.fields.map(f => {
+          if (!idSet.has(f.id)) return f;
+
+          const updated: XFAField = { ...f };
+
+          if (updates.readOnly !== undefined) {
+            updated.readOnly = updates.readOnly;
+          }
+          if (updates.visibility !== undefined) {
+            updated.visibility = updates.visibility;
+          }
+          if (updates.required !== undefined) {
+            updated.required = updates.required;
+          }
+          if (updates.resetValues) {
+            updated.value = f.defaultValue || '';
+          } else if (updates.clearValues) {
+            updated.value = '';
+          } else if (updates.setValue !== undefined) {
+            updated.value = updates.setValue;
+          }
+
+          templateUpdates.push({
+            fieldName: f.name,
+            readOnly: updates.readOnly,
+            visibility: updates.visibility,
+            required: updates.required,
+          });
+
+          return updated;
+        }),
+        subforms: updateRecursive(sf.subforms),
+      }));
+    };
+
+    const updatedSubforms = updateRecursive(subforms);
+    setSubforms(updatedSubforms);
+
+    // 1. Update template XML if template properties changed
+    let updatedTemplateXml = xfaPackets.templateXml || '';
+    if (
+      updates.readOnly !== undefined ||
+      updates.visibility !== undefined ||
+      updates.required !== undefined
+    ) {
+      updatedTemplateXml = updateBulkFieldsInTemplate(updatedTemplateXml, templateUpdates);
+    }
+
+    // 2. Synchronize datasets XML
+    const currentFields: XFAField[] = [];
+    const collect = (list: XFASubform[]) => {
+      list.forEach(sf => {
+        currentFields.push(...sf.fields);
+        if (sf.subforms.length > 0) collect(sf.subforms);
+      });
+    };
+    collect(updatedSubforms);
+
+    const newDatasetsXml = updateDatasetsXml(xfaPackets.datasetsXml, currentFields);
+    const updatedPackets: XFAPackets = {
+      ...xfaPackets,
+      templateXml: updatedTemplateXml,
+      datasetsXml: newDatasetsXml,
+    };
+    updatedPackets.fullXdpXml = assembleXdpPackage(updatedPackets);
+    setXfaPackets(updatedPackets);
+
+    // Feedback summary toast
+    const changes: string[] = [];
+    if (updates.readOnly !== undefined) changes.push(updates.readOnly ? 'set to Read-Only' : 'set to Editable');
+    if (updates.visibility !== undefined) changes.push(`visibility: ${updates.visibility}`);
+    if (updates.required !== undefined) changes.push(updates.required ? 'marked Required' : 'marked Optional');
+    if (updates.resetValues) changes.push('reset to default');
+    if (updates.clearValues) changes.push('cleared values');
+    if (updates.setValue !== undefined) changes.push(`set value to "${updates.setValue}"`);
+
+    showToast(`Bulk updated ${fieldIds.length} ${fieldIds.length === 1 ? 'field' : 'fields'} (${changes.join(', ')})`);
+  };
+
   // Export updated PDF with XFA modifications
   const handleExportPdf = async () => {
     if (!pdfBytes) return;
@@ -444,11 +578,122 @@ export default function App() {
     showToast('Applied standardized document metadata');
   };
 
+  // Global Keyboard Shortcuts integration
+  useGlobalShortcuts({
+    activeTab,
+    onTabChange: (tab: WorkspaceTab) => {
+      setActiveTab(tab);
+      const tabLabels: Record<string, string> = {
+        form: 'Visual Form Editor',
+        xml: 'XFA XML Data',
+        preview: 'PDF Canvas & Fields',
+        preflight: 'Preflight Audit',
+        convert: 'Document Conversion',
+        resources: 'Extract Resources',
+        batch: 'Batch Extract',
+      };
+      showToast(`Workspace: ${tabLabels[tab] || tab}`);
+    },
+    onSavePdf: () => {
+      showToast('Exporting filled PDF (Ctrl+S)...');
+      handleExportPdf();
+    },
+    onExportXml: () => {
+      showToast('Exporting XML dataset (Ctrl+Shift+S)...');
+      handleExportXml();
+    },
+    onExportJson: () => {
+      showToast('Exporting JSON dataset (Ctrl+Shift+J)...');
+      handleExportJson();
+    },
+    onDownloadZip: () => {
+      showToast('Packaging resources ZIP (Ctrl+Shift+Z)...');
+      handleDownloadAllZip();
+    },
+    onToggleShortcutsModal: () => {
+      setIsShortcutsModalOpen(prev => !prev);
+    },
+    isShortcutsModalOpen,
+  });
+
   const hasXfa = Boolean(xfaPackets.templateXml || xfaPackets.fullXdpXml || subforms.length > 0);
   const resourceCount = manifest
     ? manifest.images.length + manifest.fonts.length + manifest.attachments.length
     : 0;
 
+  if (isLoading || !pdfBytes) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center space-y-4 font-sans">
+        <div className="w-10 h-10 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+        <div className="text-center space-y-1">
+          <p className="text-sm font-semibold text-slate-200">Opening Adobe LiveCycle Dynamic XFA Document...</p>
+          <p className="text-xs text-slate-400 font-mono">Compiling XFA packets and rendering interactive form for {filename}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- ACROBAT STYLE UI MODE ---
+  if (uiMode === 'acrobat') {
+    return (
+      <>
+        <AcrobatWorkspace
+          pdfBytes={pdfBytes}
+          filename={filename}
+          hasXfa={hasXfa}
+          fields={allFields}
+          subforms={subforms}
+          xfaPackets={xfaPackets}
+          manifest={manifest}
+          preflightSummary={preflightSummary}
+          targetFieldId={targetFieldId}
+          onFieldValueChange={handleFieldValueChange}
+          onUpdateFieldAppearance={handleUpdateFieldAppearance}
+          onResetFieldAppearance={handleResetFieldAppearance}
+          onBulkUpdateFields={handleBulkUpdateFields}
+          onExportPdf={handleExportPdf}
+          onExportXml={handleExportXml}
+          onExportJson={handleExportJson}
+          onDownloadAllZip={handleDownloadAllZip}
+          onLoadCanadaBookFund={handleLoadCanadaBookFund}
+          onFileUpload={handleFileUpload}
+          onAutofillSample={handleAutofillSample}
+          onResetDefaults={handleResetDefaults}
+          onApplyXmlChanges={handleApplyXmlChanges}
+          onShowToast={showToast}
+          onSwitchToStudioUI={() => setUiMode('studio')}
+          isExportingPdf={isExportingPdf}
+        />
+
+        {/* Keyboard Shortcuts Reference Modal */}
+        <KeyboardShortcutsModal
+          isOpen={isShortcutsModalOpen}
+          onClose={() => setIsShortcutsModalOpen(false)}
+          onTabSelect={(tab) => {
+            setActiveTab(tab);
+            setUiMode('studio');
+            setIsShortcutsModalOpen(false);
+          }}
+          onExportPdf={handleExportPdf}
+          onExportXml={handleExportXml}
+          onDownloadAllZip={handleDownloadAllZip}
+        />
+
+        {/* Offline Mode Indicator */}
+        <OfflineIndicator />
+
+        {/* Toast Notification */}
+        {toastMessage && (
+          <div className="fixed bottom-6 right-6 z-50 bg-slate-900 border border-slate-700 text-slate-100 text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
+            <span className="w-2 h-2 rounded-full bg-red-400" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // --- MODERN STUDIO UI MODE ---
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-sky-500/30 selection:text-white">
       {/* Top Bar Header */}
@@ -465,6 +710,9 @@ export default function App() {
         preflightWarningsCount={preflightSummary.warningsCount}
         fields={allFields}
         onSelectField={handleHeaderSelectField}
+        onOpenShortcuts={() => setIsShortcutsModalOpen(true)}
+        onSwitchToAcrobatUI={() => setUiMode('acrobat')}
+        onLoadCanadaBookFund={handleLoadCanadaBookFund}
       />
 
       {/* Document Information & Control Toolbar */}
@@ -474,6 +722,8 @@ export default function App() {
         onFileUpload={handleFileUpload}
         onLoadSampleXfa={handleLoadSampleXfa}
         onLoadSampleMedia={handleLoadSampleMedia}
+        onLoadCanadaBookFund={handleLoadCanadaBookFund}
+        onOpenUrlModal={() => setIsUrlModalOpen(true)}
         onImportXml={handleImportXml}
         onExportXml={handleExportXml}
         onExportJson={handleExportJson}
@@ -501,6 +751,7 @@ export default function App() {
                 onResetDefaults={handleResetDefaults}
                 onLoadSampleXfa={handleLoadSampleXfa}
                 onSwitchToResources={() => setActiveTab('resources')}
+                onBulkUpdateFields={handleBulkUpdateFields}
               />
             )}
 
@@ -574,6 +825,19 @@ export default function App() {
         )}
       </main>
 
+      {/* Keyboard Shortcuts Reference Modal */}
+      <KeyboardShortcutsModal
+        isOpen={isShortcutsModalOpen}
+        onClose={() => setIsShortcutsModalOpen(false)}
+        onTabSelect={(tab) => {
+          setActiveTab(tab);
+          setIsShortcutsModalOpen(false);
+        }}
+        onExportPdf={handleExportPdf}
+        onExportXml={handleExportXml}
+        onDownloadAllZip={handleDownloadAllZip}
+      />
+
       {/* Offline Mode Indicator */}
       <OfflineIndicator />
 
@@ -582,6 +846,69 @@ export default function App() {
         <div className="fixed bottom-6 right-6 z-50 bg-slate-900 border border-slate-700 text-slate-100 text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
           <span className="w-2 h-2 rounded-full bg-sky-400" />
           <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* URL Modal Dialog in Studio View */}
+      {isUrlModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-150"
+        >
+          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-lg w-full p-5 space-y-4 shadow-2xl text-slate-100 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-semibold text-slate-100">Open Document From Web URL</h3>
+              <button
+                onClick={() => setIsUrlModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-200 rounded"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Enter the direct URL of an XFA or standard PDF. Our engine will bypass browser "Please wait" errors and render all LiveCycle packets.
+            </p>
+
+            <div className="space-y-2">
+              <input
+                type="url"
+                value={urlModalInput}
+                onChange={e => setUrlModalInput(e.target.value)}
+                placeholder="https://example.com/document.pdf"
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 font-mono focus:outline-none focus:border-sky-500"
+              />
+
+              <div className="pt-1">
+                <span className="text-[11px] text-slate-400 block mb-1">Official Canada Book Fund form:</span>
+                <button
+                  type="button"
+                  onClick={() => setUrlModalInput('https://www.canada.ca/content/dam/pch/documents/services/funding/book-fund/cBF-FinRepDatFrm-eng.pdf')}
+                  className="w-full text-left p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-mono text-red-300 truncate transition-colors"
+                >
+                  https://www.canada.ca/.../cBF-FinRepDatFrm-eng.pdf
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsUrlModalOpen(false)}
+                className="px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleUrlModalSubmit}
+                className="px-4 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors shadow-xs"
+              >
+                Open &amp; Compile XFA
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
