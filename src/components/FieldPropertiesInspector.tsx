@@ -25,7 +25,10 @@ import {
   CheckCircle2,
   AlertCircle,
   Copy,
+  HelpCircle,
+  Volume2,
 } from 'lucide-react';
+import { getFieldTooltipGuide } from '../utils/xfaTooltipHelper';
 
 interface FieldPropertiesInspectorProps {
   selectedField: XFAField | null;
@@ -489,6 +492,68 @@ export const FieldPropertiesInspector: React.FC<FieldPropertiesInspectorProps> =
             )}
           </div>
         </div>
+
+        {/* SECTION 5: XFA ASSIST & TOOLTIP GUIDANCE */}
+        {(() => {
+          const guide = getFieldTooltipGuide(selectedField);
+          return (
+            <div className="space-y-2 pt-3 border-t border-slate-800">
+              <span className="text-[11px] font-mono text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <HelpCircle className="w-3 h-3 text-sky-400" />
+                  <span>XFA Assist &amp; Guidance</span>
+                </span>
+                <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
+                  guide.hasExplicitAssist
+                    ? 'bg-sky-950 text-sky-300 border border-sky-800'
+                    : 'bg-slate-800 text-slate-400'
+                }`}>
+                  {guide.hasExplicitAssist ? '<assist> parsed' : 'Semantic Guide'}
+                </span>
+              </span>
+
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-2.5 space-y-2 text-[11px]">
+                {/* Tooltip text */}
+                <div className="space-y-1">
+                  <span className="text-slate-400 font-medium flex items-center gap-1">
+                    <span>Help Guidance / toolTip:</span>
+                  </span>
+                  <div className="bg-slate-900/90 border border-slate-800/60 rounded p-2 text-slate-200 text-xs leading-relaxed">
+                    {guide.guidance}
+                  </div>
+                </div>
+
+                {/* Speech prompt if present in <speak> */}
+                {guide.speakPrompt && (
+                  <div className="space-y-1 pt-1 border-t border-slate-800">
+                    <span className="text-slate-400 font-medium flex items-center gap-1 text-[10px]">
+                      <Volume2 className="w-3 h-3 text-sky-400" />
+                      <span>Screen Reader &lt;speak&gt; Prompt:</span>
+                    </span>
+                    <div className="text-[11px] font-mono text-sky-300 bg-sky-950/40 border border-sky-900/40 rounded px-2 py-1">
+                      "{guide.speakPrompt}"
+                    </div>
+                  </div>
+                )}
+
+                {/* Format requirement hint */}
+                {guide.formatHint && (
+                  <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800">
+                    <span className="text-slate-400">Format Rule:</span>
+                    <span className="text-amber-300 font-mono text-[10px] px-1.5 py-0.2 rounded bg-amber-950/40 border border-amber-900/60">
+                      {guide.formatHint}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-800/60 font-mono">
+                  <span>Source XML Node:</span>
+                  <span className="text-slate-400">{guide.source}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

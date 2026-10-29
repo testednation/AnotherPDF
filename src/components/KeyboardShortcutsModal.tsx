@@ -16,6 +16,9 @@ import {
   ShieldCheck,
   FileText,
   Compass,
+  Undo2,
+  Redo2,
+  Lightbulb,
 } from 'lucide-react';
 
 export interface ShortcutItem {
@@ -102,8 +105,33 @@ interface ModalSection {
 
   const sections: ModalSection[] = [
     {
+      title: 'Form History & Editing',
+      icon: <Undo2 className="w-4 h-4 text-sky-400" />,
+      items: [
+        {
+          keys: ['Mod', 'Z'],
+          description: 'Undo last field change (up to 10 changes)',
+          badge: 'History',
+        },
+        {
+          keys: ['Mod', 'Y'],
+          description: 'Redo previously undone field change',
+          badge: 'History',
+        },
+        {
+          keys: ['Mod', 'Shift', 'Z'],
+          description: 'Redo change (alternate Mac/universal binding)',
+        },
+        {
+          keys: ['Alt', 'B'],
+          description: 'Toggle Simple/Beginner Mode vs Advanced View',
+          badge: 'Beginner',
+        },
+      ],
+    },
+    {
       title: 'Form Saving & Export',
-      icon: <FileDown className="w-4 h-4 text-sky-400" />,
+      icon: <FileDown className="w-4 h-4 text-emerald-400" />,
       items: [
         {
           keys: ['Mod', 'S'],
@@ -121,7 +149,7 @@ interface ModalSection {
           description: 'Export Form Values as clean JSON',
         },
         {
-          keys: ['Mod', 'Shift', 'Z'],
+          keys: ['Mod', 'Shift', 'D'],
           description: 'Download All Extracted Resources (ZIP archive)',
           onClick: onDownloadAllZip,
         },

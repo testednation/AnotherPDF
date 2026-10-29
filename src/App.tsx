@@ -11,6 +11,7 @@ import { BatchProcessorView } from './components/BatchProcessorView';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { useGlobalShortcuts, WorkspaceTab } from './hooks/useGlobalShortcuts';
+import { useFormHistory } from './hooks/useFormHistory';
 import {
   extractXfaPackets,
   parseXfaTemplate,
@@ -192,9 +193,8 @@ export default function App() {
     showToast(`Loaded ${file.name}`);
   };
 
-  // Field Value Change
-  const handleFieldValueChange = (fieldId: string, newValue: string) => {
-    // 1. Update subforms field value in state
+  // Internal Field Value Applier (does not trigger new history records during undo/redo)
+  const applyFieldValueInternal = useCallback((fieldId: string, newValue: string) => {
     let targetField: XFAField | null = null;
     const updateRecursive = (sfList: XFASubform[]): XFASubform[] => {
       return sfList.map(sf => ({
@@ -210,26 +210,50 @@ export default function App() {
       }));
     };
 
-    const updatedSubforms = updateRecursive(subforms);
-    setSubforms(updatedSubforms);
+    setSubforms(prevSubforms => {
+      const updatedSubforms = updateRecursive(prevSubforms);
+      const currentFields: XFAField[] = [];
+      const collect = (list: XFASubform[]) => {
+        list.forEach(sf => {
+          currentFields.push(...sf.fields);
+          if (sf.subforms.length > 0) collect(sf.subforms);
+        });
+      };
+      collect(updatedSubforms);
 
-    // 2. Synchronize datasets XML
-    const currentFields: XFAField[] = [];
-    const collect = (list: XFASubform[]) => {
-      list.forEach(sf => {
-        currentFields.push(...sf.fields);
-        if (sf.subforms.length > 0) collect(sf.subforms);
+      setXfaPackets(prevPackets => {
+        const newDatasetsXml = updateDatasetsXml(prevPackets.datasetsXml, currentFields);
+        const updatedPackets: XFAPackets = {
+          ...prevPackets,
+          datasetsXml: newDatasetsXml,
+        };
+        updatedPackets.fullXdpXml = assembleXdpPackage(updatedPackets);
+        return updatedPackets;
       });
-    };
-    collect(updatedSubforms);
 
-    const newDatasetsXml = updateDatasetsXml(xfaPackets.datasetsXml, currentFields);
-    const updatedPackets: XFAPackets = {
-      ...xfaPackets,
-      datasetsXml: newDatasetsXml,
-    };
-    updatedPackets.fullXdpXml = assembleXdpPackage(updatedPackets);
-    setXfaPackets(updatedPackets);
+      return updatedSubforms;
+    });
+  }, []);
+
+  // Form history tracker (Undo/Redo up to 10 changes)
+  const formHistory = useFormHistory({
+    onApplyValue: applyFieldValueInternal,
+    onNotify: (msg) => showToast(msg),
+  });
+
+  // User Field Value Change (records to history stack)
+  const handleFieldValueChange = (fieldId: string, newValue: string) => {
+    const current = allFields.find(f => f.id === fieldId);
+    if (current && current.value !== newValue) {
+      formHistory.recordChange(
+        fieldId,
+        current.name,
+        current.caption || current.name,
+        current.value || '',
+        newValue
+      );
+    }
+    applyFieldValueInternal(fieldId, newValue);
   };
 
   // Autofill Sample Data
@@ -614,6 +638,10 @@ export default function App() {
       setIsShortcutsModalOpen(prev => !prev);
     },
     isShortcutsModalOpen,
+    canUndo: formHistory.canUndo,
+    canRedo: formHistory.canRedo,
+    onUndo: formHistory.undo,
+    onRedo: formHistory.redo,
   });
 
   const hasXfa = Boolean(xfaPackets.templateXml || xfaPackets.fullXdpXml || subforms.length > 0);
@@ -663,6 +691,13 @@ export default function App() {
           onShowToast={showToast}
           onSwitchToStudioUI={() => setUiMode('studio')}
           isExportingPdf={isExportingPdf}
+          canUndo={formHistory.canUndo}
+          canRedo={formHistory.canRedo}
+          onUndo={formHistory.undo}
+          onRedo={formHistory.redo}
+          history={formHistory.history}
+          currentIndex={formHistory.currentIndex}
+          jumpToHistoryIndex={formHistory.jumpToHistoryIndex}
         />
 
         {/* Keyboard Shortcuts Reference Modal */}
@@ -752,6 +787,14 @@ export default function App() {
                 onLoadSampleXfa={handleLoadSampleXfa}
                 onSwitchToResources={() => setActiveTab('resources')}
                 onBulkUpdateFields={handleBulkUpdateFields}
+                onExportPdf={handleExportPdf}
+                canUndo={formHistory.canUndo}
+                canRedo={formHistory.canRedo}
+                onUndo={formHistory.undo}
+                onRedo={formHistory.redo}
+                history={formHistory.history}
+                currentIndex={formHistory.currentIndex}
+                jumpToHistoryIndex={formHistory.jumpToHistoryIndex}
               />
             )}
 

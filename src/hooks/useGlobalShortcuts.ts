@@ -21,6 +21,10 @@ interface UseGlobalShortcutsOptions {
   onDownloadZip?: () => void;
   onToggleShortcutsModal: () => void;
   isShortcutsModalOpen?: boolean;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
 }
 
 export function useGlobalShortcuts({
@@ -32,6 +36,10 @@ export function useGlobalShortcuts({
   onDownloadZip,
   onToggleShortcutsModal,
   isShortcutsModalOpen = false,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
 }: UseGlobalShortcutsOptions) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -44,7 +52,30 @@ export function useGlobalShortcuts({
 
       const hasMeta = e.metaKey || e.ctrlKey;
 
-      // 1. Save & Export PDF: Cmd+S or Ctrl+S
+      // 1. Undo Field Change: Cmd+Z or Ctrl+Z (without shift)
+      if (hasMeta && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        if (canUndo && onUndo) {
+          e.preventDefault();
+          e.stopPropagation();
+          onUndo();
+          return;
+        }
+      }
+
+      // 2. Redo Field Change: Cmd+Y or Ctrl+Y or Cmd+Shift+Z or Ctrl+Shift+Z
+      if (
+        (hasMeta && !e.shiftKey && e.key.toLowerCase() === 'y') ||
+        (hasMeta && e.shiftKey && e.key.toLowerCase() === 'z')
+      ) {
+        if (canRedo && onRedo) {
+          e.preventDefault();
+          e.stopPropagation();
+          onRedo();
+          return;
+        }
+      }
+
+      // 3. Save & Export PDF: Cmd+S or Ctrl+S
       if (hasMeta && !e.shiftKey && e.key.toLowerCase() === 's') {
         e.preventDefault();
         e.stopPropagation();
@@ -52,7 +83,7 @@ export function useGlobalShortcuts({
         return;
       }
 
-      // 2. Export XML: Cmd+Shift+S or Ctrl+Shift+S
+      // 4. Export XML: Cmd+Shift+S or Ctrl+Shift+S
       if (hasMeta && e.shiftKey && e.key.toLowerCase() === 's') {
         e.preventDefault();
         e.stopPropagation();
@@ -60,7 +91,7 @@ export function useGlobalShortcuts({
         return;
       }
 
-      // 3. Export JSON: Cmd+Shift+J or Ctrl+Shift+J
+      // 5. Export JSON: Cmd+Shift+J or Ctrl+Shift+J
       if (hasMeta && e.shiftKey && e.key.toLowerCase() === 'j') {
         e.preventDefault();
         e.stopPropagation();
@@ -68,8 +99,8 @@ export function useGlobalShortcuts({
         return;
       }
 
-      // 4. Download Resources ZIP: Cmd+Shift+Z or Ctrl+Shift+Z
-      if (hasMeta && e.shiftKey && e.key.toLowerCase() === 'z') {
+      // 6. Download Resources ZIP: Cmd+Shift+D or Ctrl+Shift+D
+      if (hasMeta && e.shiftKey && e.key.toLowerCase() === 'd') {
         e.preventDefault();
         e.stopPropagation();
         onDownloadZip?.();
@@ -128,6 +159,10 @@ export function useGlobalShortcuts({
       onDownloadZip,
       onToggleShortcutsModal,
       isShortcutsModalOpen,
+      canUndo,
+      canRedo,
+      onUndo,
+      onRedo,
     ]
   );
 

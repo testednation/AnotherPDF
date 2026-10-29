@@ -69,6 +69,12 @@ export interface ValidationError {
   actualValue: string;
 }
 
+export interface XFAAssist {
+  toolTip?: string;
+  speak?: string;
+  desc?: string;
+}
+
 export interface XFAField {
   id: string;
   name: string;
@@ -83,6 +89,7 @@ export interface XFAField {
   readOnly?: boolean;
   visibility?: 'visible' | 'invisible' | 'hidden';
   tooltip?: string;
+  assist?: XFAAssist;
   format?: string;
   rawXmlSnippet?: string;
   bounds?: XFABounds;

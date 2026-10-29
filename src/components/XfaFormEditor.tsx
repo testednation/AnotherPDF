@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   CheckCircle,
@@ -32,9 +32,17 @@ import {
   Zap,
   ArrowRight,
   Info,
+  Undo2,
+  Redo2,
+  Sliders,
+  Lightbulb,
+  History,
 } from 'lucide-react';
 import { XFASubform, XFAField, ValidationError } from '../types/pdf';
 import { validateAllFields, quickFixFieldValue } from '../utils/validationEngine';
+import { useFormHistory, HistoryEntry } from '../hooks/useFormHistory';
+import { BeginnerFormWizard } from './BeginnerFormWizard';
+import { FieldTooltipPopover } from './FieldTooltipPopover';
 
 export interface BulkFieldUpdates {
   readOnly?: boolean;
@@ -54,6 +62,14 @@ interface XfaFormEditorProps {
   onLoadSampleXfa: () => void;
   onSwitchToResources: () => void;
   onBulkUpdateFields?: (fieldIds: string[], updates: BulkFieldUpdates) => void;
+  onExportPdf?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  history?: HistoryEntry[];
+  currentIndex?: number;
+  jumpToHistoryIndex?: (index: number) => void;
 }
 
 export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
@@ -65,7 +81,29 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
   onLoadSampleXfa,
   onSwitchToResources,
   onBulkUpdateFields,
+  onExportPdf,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
+  history,
+  currentIndex,
+  jumpToHistoryIndex,
 }) => {
+  const [editorMode, setEditorMode] = useState<'beginner' | 'advanced'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('xfa_editor_mode');
+      if (saved === 'advanced' || saved === 'beginner') return saved;
+    }
+    return 'beginner';
+  });
+
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('xfa_editor_mode', editorMode);
+  }, [editorMode]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [activeSignatureField, setActiveSignatureField] = useState<string | null>(null);
@@ -80,6 +118,35 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
   const [showOnlyInvalid, setShowOnlyInvalid] = useState(false);
   const [isValidationDrawerOpen, setIsValidationDrawerOpen] = useState(false);
   const [validationToast, setValidationToast] = useState<string | null>(null);
+
+  // Internal history tracker fallback if not provided by parent
+  const internalHistory = useFormHistory({
+    onApplyValue: onFieldValueChange,
+    onNotify: (msg) => {
+      setValidationToast(msg);
+      setTimeout(() => setValidationToast(null), 3500);
+    },
+  });
+
+  const activeCanUndo = canUndo !== undefined ? canUndo : internalHistory.canUndo;
+  const activeCanRedo = canRedo !== undefined ? canRedo : internalHistory.canRedo;
+  const activeUndo = onUndo || internalHistory.undo;
+  const activeRedo = onRedo || internalHistory.redo;
+  const activeHistory = history || internalHistory.history;
+  const activeCurrentIndex = currentIndex !== undefined ? currentIndex : internalHistory.currentIndex;
+  const activeJumpToHistory = jumpToHistoryIndex || internalHistory.jumpToHistoryIndex;
+
+  // Keyboard shortcut listener for Alt+B to switch modes
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        setEditorMode(prev => (prev === 'beginner' ? 'advanced' : 'beginner'));
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
 
   const toggleSection = (id: string) => {
     setCollapsedSections(prev => ({ ...prev, [id]: !prev[id] }));
@@ -266,6 +333,20 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
     setBatchValueInput('');
   };
 
+  const handleFieldChange = (fieldId: string, newValue: string) => {
+    const target = allFields.find(f => f.id === fieldId);
+    if (target && !onUndo) {
+      internalHistory.recordChange(
+        fieldId,
+        target.name,
+        target.caption || target.name,
+        target.value || '',
+        newValue
+      );
+    }
+    onFieldValueChange(fieldId, newValue);
+  };
+
   if (!hasXfa || subforms.length === 0) {
     return (
       <div className="max-w-4xl mx-auto py-12 px-6">
@@ -302,6 +383,68 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
     );
   }
 
+  // BEGINNER MODE PRESENTATION
+  if (editorMode === 'beginner') {
+    return (
+      <div className="max-w-5xl mx-auto py-6 px-4 sm:px-6 space-y-5 pb-24">
+        {/* Beginner Top Mode Switcher Bar */}
+        <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 shadow-md">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold text-slate-300">Editor Experience:</span>
+            <div className="inline-flex items-center p-0.5 rounded-lg bg-slate-950 border border-slate-800">
+              <button
+                onClick={() => setEditorMode('beginner')}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-xs"
+              >
+                <Lightbulb className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Simple Mode (Beginner)</span>
+              </button>
+              <button
+                onClick={() => setEditorMode('advanced')}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
+                title="Switch to full power editor with XML, trees, and bulk editing"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span>Power / Advanced View</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+              Press <kbd className="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300">Alt+B</kbd> to toggle view
+            </span>
+            {onExportPdf && (
+              <button
+                onClick={onExportPdf}
+                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors shadow-xs"
+              >
+                Save Filled PDF
+              </button>
+            )}
+          </div>
+        </div>
+
+        <BeginnerFormWizard
+          subforms={subforms}
+          allFields={allFields}
+          onFieldValueChange={handleFieldChange}
+          onAutofillSample={onAutofillSample}
+          onResetDefaults={onResetDefaults}
+          canUndo={activeCanUndo}
+          canRedo={activeCanRedo}
+          onUndo={activeUndo}
+          onRedo={activeRedo}
+          history={activeHistory}
+          currentIndex={activeCurrentIndex}
+          onExportPdf={onExportPdf}
+          onSwitchToAdvanced={() => setEditorMode('advanced')}
+        />
+      </div>
+    );
+  }
+
+  // ADVANCED POWER EDITOR PRESENTATION
   return (
     <div className="max-w-5xl mx-auto py-6 px-4 sm:px-6 space-y-5 pb-24">
       {/* Top Banner & Quick Controls */}
@@ -321,6 +464,82 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {/* Mode Switcher */}
+          <div className="flex items-center p-0.5 rounded-lg bg-slate-950 border border-slate-800 mr-1">
+            <button
+              onClick={() => setEditorMode('beginner')}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
+              title="Switch to Simple Beginner Wizard view"
+            >
+              <Lightbulb className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Simple Mode</span>
+            </button>
+            <button
+              onClick={() => setEditorMode('advanced')}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30 shadow-xs"
+            >
+              <Sliders className="w-3.5 h-3.5 text-sky-400" />
+              <span>Advanced</span>
+            </button>
+          </div>
+
+          {/* History Undo Button */}
+          <button
+            onClick={activeUndo}
+            disabled={!activeCanUndo}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${
+              activeCanUndo
+                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 shadow-xs'
+                : 'bg-slate-900/60 text-slate-500 border border-slate-800/60 cursor-not-allowed'
+            }`}
+            title="Undo last field change (Ctrl+Z)"
+          >
+            <Undo2 className="w-3.5 h-3.5 text-sky-400" />
+            <span>Undo</span>
+            {activeCanUndo && (
+              <span className="text-[10px] bg-slate-950 text-sky-300 px-1.5 py-0.2 rounded font-mono font-bold">
+                {activeCurrentIndex + 1}
+              </span>
+            )}
+          </button>
+
+          {/* History Redo Button */}
+          <button
+            onClick={activeRedo}
+            disabled={!activeCanRedo}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-all ${
+              activeCanRedo
+                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 shadow-xs'
+                : 'bg-slate-900/60 text-slate-500 border border-slate-800/60 cursor-not-allowed'
+            }`}
+            title="Redo previously undone change (Ctrl+Y)"
+          >
+            <Redo2 className="w-3.5 h-3.5 text-sky-400" />
+            <span>Redo</span>
+            {activeCanRedo && (
+              <span className="text-[10px] bg-slate-950 text-sky-300 px-1.5 py-0.2 rounded font-mono font-bold">
+                {activeHistory.length - activeCurrentIndex - 1}
+              </span>
+            )}
+          </button>
+
+          {/* History Log Popover Button */}
+          <button
+            onClick={() => setShowHistoryModal(prev => !prev)}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-all ${
+              showHistoryModal
+                ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 shadow-xs'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700'
+            }`}
+            title="View last 10 changes history log"
+          >
+            <History className="w-3.5 h-3.5 text-slate-400" />
+            <span>History</span>
+            <span className="text-[10px] text-slate-400 font-mono">
+              ({activeHistory.length})
+            </span>
+          </button>
+
           {/* Bulk Edit Toggle Button */}
           <button
             onClick={() => {
@@ -365,6 +584,93 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
           </button>
         </div>
       </div>
+
+      {/* 10-Step History Log Dialog / Drawer */}
+      {showHistoryModal && (
+        <div className="bg-slate-900 border border-sky-700/60 rounded-xl p-4 shadow-xl space-y-3 animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4 text-sky-400" />
+              <h3 className="text-xs font-bold text-slate-100 uppercase tracking-wider">
+                Local State History Tracker (Last 10 Changes)
+              </h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono text-slate-400">
+                Current State: Step {activeCurrentIndex + 1} of {activeHistory.length}
+              </span>
+              <button
+                onClick={() => setShowHistoryModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-200 rounded"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {activeHistory.length === 0 ? (
+            <div className="py-6 text-center text-xs text-slate-400">
+              No field modifications recorded yet. Edit any field to start tracking history up to 10 changes.
+            </div>
+          ) : (
+            <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1 text-xs">
+              {activeHistory.map((entry, idx) => {
+                const isCurrent = idx === activeCurrentIndex;
+                const isPast = idx <= activeCurrentIndex;
+                const timeAgo = Math.round((Date.now() - entry.timestamp) / 1000);
+
+                return (
+                  <div
+                    key={entry.id}
+                    className={`p-2 rounded-lg border flex items-center justify-between gap-3 transition-colors ${
+                      isCurrent
+                        ? 'bg-sky-950/40 border-sky-500/80 text-sky-100 ring-1 ring-sky-500/30'
+                        : isPast
+                        ? 'bg-slate-900/70 border-slate-800 text-slate-300'
+                        : 'bg-slate-950/40 border-slate-900 text-slate-500'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-bold shrink-0">
+                        #{idx + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate text-[11px] flex items-center gap-1.5">
+                          <span>{entry.fieldCaption || entry.fieldName}</span>
+                          {isCurrent && (
+                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-sky-500 text-slate-950 font-bold">
+                              Current
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] font-mono text-slate-400 truncate">
+                          <span className="line-through text-slate-500">{entry.prevValue || 'empty'}</span>
+                          <span className="mx-1 text-sky-400">&rarr;</span>
+                          <span className="text-slate-200">{entry.nextValue || 'empty'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        {timeAgo < 60 ? `${timeAgo}s ago` : `${Math.round(timeAgo / 60)}m ago`}
+                      </span>
+                      {!isCurrent && (
+                        <button
+                          onClick={() => activeJumpToHistory(idx)}
+                          className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-sky-300 text-[10px] font-medium border border-slate-700 transition-colors"
+                        >
+                          Jump here
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Field Validation Engine Status Ribbon */}
       <div className={`rounded-xl border transition-all p-4 ${
@@ -653,7 +959,7 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
             subform={subform}
             isCollapsed={Boolean(collapsedSections[subform.id])}
             onToggle={() => toggleSection(subform.id)}
-            onFieldValueChange={onFieldValueChange}
+            onFieldValueChange={handleFieldChange}
             activeSignatureField={activeSignatureField}
             setActiveSignatureField={setActiveSignatureField}
             isBulkMode={isBulkMode}
@@ -1117,11 +1423,7 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
                 *
               </span>
             )}
-            {field.tooltip && (
-              <span title={field.tooltip} className="text-slate-500 hover:text-slate-300 cursor-help">
-                <HelpCircle className="w-3 h-3" />
-              </span>
-            )}
+            <FieldTooltipPopover field={field} variant="icon" />
           </label>
         </div>
 

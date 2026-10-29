@@ -1,5 +1,6 @@
 import { PDFDocument, PDFName, PDFDict, PDFArray, PDFStream, PDFRawStream } from 'pdf-lib';
 import { XFAField, XFASubform, XFAPackets } from '../types/pdf';
+import { parseXfaAssistFromElement } from './xfaTooltipHelper';
 
 /**
  * Decodes a Uint8Array or stream bytes to string, handling UTF-8, UTF-16BE/LE
@@ -533,13 +534,8 @@ function parseFieldsFromElement(
       }
     }
 
-    // Check tooltip / assist
-    let tooltip = '';
-    const assistElem = fElem.getElementsByTagName('assist')[0];
-    if (assistElem) {
-      const speakElem = assistElem.getElementsByTagName('speak')[0] || assistElem.getElementsByTagName('toolTip')[0];
-      tooltip = speakElem?.textContent?.trim() || '';
-    }
+    // Parse comprehensive XFA <assist>, <toolTip>, and <speak> properties
+    const { assist: assistData, tooltip } = parseXfaAssistFromElement(fElem);
 
     // Required & Validation check
     const validateElem = fElem.getElementsByTagName('validate')[0];
@@ -641,6 +637,7 @@ function parseFieldsFromElement(
       readOnly: fElem.getAttribute('access') === 'readOnly',
       visibility: (fElem.getAttribute('presence') as 'visible' | 'invisible' | 'hidden') || 'visible',
       tooltip: tooltip || undefined,
+      assist: assistData,
       rawXmlSnippet: new XMLSerializer().serializeToString(fElem),
       bounds,
       appearance,

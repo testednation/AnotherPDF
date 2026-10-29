@@ -202,6 +202,10 @@ export async function createSampleXfaPdf(): Promise<Uint8Array> {
         <caption font="Helvetica" size="9pt">
           <value><text>Company Legal Business Name</text></value>
         </caption>
+        <assist>
+          <toolTip>Official registered corporate name as filed with the state or national incorporation registry.</toolTip>
+          <speak>Company Legal Business Name</speak>
+        </assist>
         <ui><textEdit/></ui>
         <validate nullTest="error"/>
         <bind match="dataRef" ref="companyLegalName"/>
@@ -211,6 +215,10 @@ export async function createSampleXfaPdf(): Promise<Uint8Array> {
         <caption font="Helvetica" size="9pt">
           <value><text>Federal Tax ID / EIN</text></value>
         </caption>
+        <assist>
+          <toolTip>9-digit Employer Identification Number (EIN) formatted as XX-XXXXXXX.</toolTip>
+          <speak>Federal Tax ID Number</speak>
+        </assist>
         <ui><textEdit/></ui>
         <bind match="dataRef" ref="federalTaxId"/>
       </field>
@@ -219,6 +227,9 @@ export async function createSampleXfaPdf(): Promise<Uint8Array> {
         <caption font="Helvetica" size="9pt">
           <value><text>Original Incorporation Date</text></value>
         </caption>
+        <assist>
+          <toolTip>The date of initial corporate charter registration formatted as YYYY-MM-DD.</toolTip>
+        </assist>
         <ui><dateTimeEdit/></ui>
         <bind match="dataRef" ref="registrationDate"/>
       </field>
@@ -227,6 +238,9 @@ export async function createSampleXfaPdf(): Promise<Uint8Array> {
         <caption font="Helvetica" size="9pt">
           <value><text>Entity Classification</text></value>
         </caption>
+        <assist>
+          <toolTip>Select the legally recognized governance structure of your enterprise.</toolTip>
+        </assist>
         <ui>
           <choiceList open="userControl">
             <items>
@@ -245,6 +259,9 @@ export async function createSampleXfaPdf(): Promise<Uint8Array> {
         <caption font="Helvetica" size="9pt">
           <value><text>Publicly Traded Entity</text></value>
         </caption>
+        <assist>
+          <toolTip>Check if company shares are listed on a public stock exchange (e.g. NYSE, NASDAQ, TSX).</toolTip>
+        </assist>
         <ui><checkButton shape="round"/></ui>
         <bind match="dataRef" ref="isPubliclyTraded"/>
       </field>
@@ -255,6 +272,9 @@ export async function createSampleXfaPdf(): Promise<Uint8Array> {
         <caption font="Helvetica" size="9pt">
           <value><text>Primary Authorized Contact</text></value>
         </caption>
+        <assist>
+          <toolTip>Full name of the designated regulatory and compliance liaison officer.</toolTip>
+        </assist>
         <ui><textEdit/></ui>
         <bind match="dataRef" ref="primaryContactName"/>
       </field>
@@ -263,6 +283,10 @@ export async function createSampleXfaPdf(): Promise<Uint8Array> {
         <caption font="Helvetica" size="9pt">
           <value><text>Official Executive Email</text></value>
         </caption>
+        <assist>
+          <toolTip>Direct corporate email for official filings, audits, and formal correspondence.</toolTip>
+          <speak>Official Executive Email</speak>
+        </assist>
         <ui><textEdit/></ui>
         <bind match="dataRef" ref="primaryEmailAddress"/>
       </field>
@@ -271,6 +295,9 @@ export async function createSampleXfaPdf(): Promise<Uint8Array> {
         <caption font="Helvetica" size="9pt">
           <value><text>Telephone Direct</text></value>
         </caption>
+        <assist>
+          <toolTip>Direct telephone line including international dialing code.</toolTip>
+        </assist>
         <ui><textEdit/></ui>
         <bind match="dataRef" ref="primaryPhoneNumber"/>
       </field>
@@ -279,6 +306,9 @@ export async function createSampleXfaPdf(): Promise<Uint8Array> {
         <caption font="Helvetica" size="9pt">
           <value><text>Headquarters Physical Address</text></value>
         </caption>
+        <assist>
+          <toolTip>Principal place of business and physical executive headquarters location.</toolTip>
+        </assist>
         <ui><textEdit multiLine="1"/></ui>
         <bind match="dataRef" ref="physicalHeadquartersAddress"/>
       </field>
@@ -1122,49 +1152,49 @@ export async function createCanadaBookFundXfaPdf(): Promise<Uint8Array> {
   const templateXml = `<template xmlns="http://www.xfa.org/schema/xfa-template/3.3/">
   <subform name="canadaBookFundReport" layout="tb">
     <subform name="recipientIdentification">
-      <field name="recipientLegalName"><caption placement="top"><value><text>Legal Name of Recipient / Raison sociale du bénéficiaire</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><message><text>Recipient legal organization name is mandatory.</text></message></validate></field>
-      <field name="cbfAgreementNumber"><caption placement="top"><value><text>CBF Agreement No. / Numéro de l'entente</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><picture>text{CBF-9999-XXX-99999}</picture><message><text>Agreement number must follow official format (e.g., CBF-2025-PCH-98421).</text></message></validate></field>
-      <field name="projectTitle"><caption placement="top"><value><text>Funded Project Title / Titre du projet subventionné</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><message><text>Project Title is required.</text></message></validate></field>
-      <field name="fiscalYear"><caption placement="top"><value><text>Fiscal Year / Exercice</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><picture>text{9999-9999}</picture><message><text>Fiscal Year must follow YYYY-YYYY format (e.g., 2025-2026).</text></message></validate></field>
-      <field name="languageOfChoice"><caption placement="top"><value><text>Official Language of Choice</text></value></caption><ui><choiceList/></ui><items><text>English</text><text>French</text><text>Bilingual</text></items></field>
-      <field name="reportingPeriodStart"><caption placement="top"><value><text>Reporting Period Start Date</text></value></caption><ui><dateTimeEdit/></ui><validate><picture>date{YYYY-MM-DD}</picture></validate></field>
-      <field name="reportingPeriodEnd"><caption placement="top"><value><text>Reporting Period End Date</text></value></caption><ui><dateTimeEdit/></ui><validate><picture>date{YYYY-MM-DD}</picture></validate></field>
-      <field name="projectOfficerName"><caption placement="top"><value><text>Project Officer In Charge</text></value></caption><ui><textEdit/></ui></field>
-      <field name="contactOfficerName"><caption placement="top"><value><text>Contact Officer Name</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><message><text>Contact Officer Name is required.</text></message></validate></field>
-      <field name="contactPhone"><caption placement="top"><value><text>Telephone</text></value></caption><ui><textEdit/></ui><validate><picture>text{(999) 999-9999}</picture><message><text>Telephone must follow (XXX) XXX-XXXX format.</text></message></validate></field>
-      <field name="contactEmail"><caption placement="top"><value><text>Contact Email Address</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><message><text>Valid recipient email address is required.</text></message></validate></field>
+      <field name="recipientLegalName"><caption placement="top"><value><text>Legal Name of Recipient / Raison sociale du bénéficiaire</text></value></caption><assist><toolTip>Official registered corporate name as listed on the Canada Revenue Agency incorporation charter.</toolTip><speak>Enter recipient legal business name</speak></assist><ui><textEdit/></ui><validate nullTest="error"><message><text>Recipient legal organization name is mandatory.</text></message></validate></field>
+      <field name="cbfAgreementNumber"><caption placement="top"><value><text>CBF Agreement No. / Numéro de l'entente</text></value></caption><assist><toolTip>Unique Canada Book Fund contribution agreement number from your contract (e.g., CBF-2025-PCH-98421).</toolTip><speak>Enter CBF agreement number</speak></assist><ui><textEdit/></ui><validate nullTest="error"><picture>text{CBF-9999-XXX-99999}</picture><message><text>Agreement number must follow official format (e.g., CBF-2025-PCH-98421).</text></message></validate></field>
+      <field name="projectTitle"><caption placement="top"><value><text>Funded Project Title / Titre du projet subventionné</text></value></caption><assist><toolTip>The approved title of the publishing project funded under the Support for Organizations initiative.</toolTip></assist><ui><textEdit/></ui><validate nullTest="error"><message><text>Project Title is required.</text></message></validate></field>
+      <field name="fiscalYear"><caption placement="top"><value><text>Fiscal Year / Exercice</text></value></caption><assist><toolTip>Applicable government fiscal year span, formatted as YYYY-YYYY (e.g., 2025-2026).</toolTip><speak>Enter fiscal year</speak></assist><ui><textEdit/></ui><validate nullTest="error"><picture>text{9999-9999}</picture><message><text>Fiscal Year must follow YYYY-YYYY format (e.g., 2025-2026).</text></message></validate></field>
+      <field name="languageOfChoice"><caption placement="top"><value><text>Official Language of Choice</text></value></caption><assist><toolTip>Preferred official language for project correspondence and documentation.</toolTip></assist><ui><choiceList/></ui><items><text>English</text><text>French</text><text>Bilingual</text></items></field>
+      <field name="reportingPeriodStart"><caption placement="top"><value><text>Reporting Period Start Date</text></value></caption><assist><toolTip>Beginning date of approved contribution activities (YYYY-MM-DD).</toolTip></assist><ui><dateTimeEdit/></ui><validate><picture>date{YYYY-MM-DD}</picture></validate></field>
+      <field name="reportingPeriodEnd"><caption placement="top"><value><text>Reporting Period End Date</text></value></caption><assist><toolTip>Conclusion date of approved contribution activities (YYYY-MM-DD).</toolTip></assist><ui><dateTimeEdit/></ui><validate><picture>date{YYYY-MM-DD}</picture></validate></field>
+      <field name="projectOfficerName"><caption placement="top"><value><text>Project Officer In Charge</text></value></caption><assist><toolTip>Name of the Canadian Heritage program officer assigned to this agreement.</toolTip></assist><ui><textEdit/></ui></field>
+      <field name="contactOfficerName"><caption placement="top"><value><text>Contact Officer Name</text></value></caption><assist><toolTip>Designated organizational contact person responsible for financial reporting.</toolTip></assist><ui><textEdit/></ui><validate nullTest="error"><message><text>Contact Officer Name is required.</text></message></validate></field>
+      <field name="contactPhone"><caption placement="top"><value><text>Telephone</text></value></caption><assist><toolTip>Direct telephone line including area code, formatted like (613) 555-0188.</toolTip></assist><ui><textEdit/></ui><validate><picture>text{(999) 999-9999}</picture><message><text>Telephone must follow (XXX) XXX-XXXX format.</text></message></validate></field>
+      <field name="contactEmail"><caption placement="top"><value><text>Contact Email Address</text></value></caption><assist><toolTip>Corporate email address where funding notifications and compliance audit notices are sent.</toolTip><speak>Official executive contact email</speak></assist><ui><textEdit/></ui><validate nullTest="error"><message><text>Valid recipient email address is required.</text></message></validate></field>
     </subform>
     <subform name="projectRevenues">
-      <field name="cbfContribution"><caption placement="top"><value><text>Canada Book Fund (CBF) Contribution</text></value></caption><ui><numericEdit/></ui><validate nullTest="error"><message><text>CBF Contribution amount cannot be blank.</text></message></validate></field>
-      <field name="otherFederalGrants"><caption placement="top"><value><text>Other Federal Government Funding</text></value></caption><ui><numericEdit/></ui></field>
-      <field name="provincialFunding"><caption placement="top"><value><text>Provincial / Territorial Funding</text></value></caption><ui><numericEdit/></ui></field>
-      <field name="municipalFunding"><caption placement="top"><value><text>Municipal Cultural Grants</text></value></caption><ui><numericEdit/></ui></field>
-      <field name="privateRevenues"><caption placement="top"><value><text>Private Sector Contributions &amp; Sales</text></value></caption><ui><numericEdit/></ui></field>
-      <field name="publisherOwnCash"><caption placement="top"><value><text>Organization Cash Contribution</text></value></caption><ui><numericEdit/></ui></field>
-      <field name="inKindAmount"><caption placement="top"><value><text>Eligible In-Kind Contributions</text></value></caption><ui><numericEdit/></ui></field>
-      <field name="totalActualRevenues"><caption placement="top"><value><text>TOTAL ACTUAL PROJECT REVENUE (CAD $)</text></value></caption><ui><numericEdit/></ui><validate nullTest="error"><script>Sum(cbfContribution, otherFederalGrants, provincialFunding, municipalFunding, privateRevenues, publisherOwnCash, inKindAmount)</script><message><text>Total revenues must equal the sum of line items.</text></message></validate></field>
+      <field name="cbfContribution"><caption placement="top"><value><text>Canada Book Fund (CBF) Contribution</text></value></caption><assist><toolTip>Total grant funding disbursed by the Department of Canadian Heritage under the Canada Book Fund.</toolTip></assist><ui><numericEdit/></ui><validate nullTest="error"><message><text>CBF Contribution amount cannot be blank.</text></message></validate></field>
+      <field name="otherFederalGrants"><caption placement="top"><value><text>Other Federal Government Funding</text></value></caption><assist><toolTip>Funding from other federal sources (e.g. Canada Council for the Arts, Telefilm, NRC-IRAP).</toolTip></assist><ui><numericEdit/></ui></field>
+      <field name="provincialFunding"><caption placement="top"><value><text>Provincial / Territorial Funding</text></value></caption><assist><toolTip>Provincial cultural funding received (e.g. Ontario Creates, SODEC Quebec, Creative BC).</toolTip></assist><ui><numericEdit/></ui></field>
+      <field name="municipalFunding"><caption placement="top"><value><text>Municipal Cultural Grants</text></value></caption><assist><toolTip>Municipal cultural grants and municipal arts council contributions.</toolTip></assist><ui><numericEdit/></ui></field>
+      <field name="privateRevenues"><caption placement="top"><value><text>Private Sector Contributions &amp; Sales</text></value></caption><assist><toolTip>Net book sales, licensing royalties, and private foundation donations.</toolTip></assist><ui><numericEdit/></ui></field>
+      <field name="publisherOwnCash"><caption placement="top"><value><text>Organization Cash Contribution</text></value></caption><assist><toolTip>Publisher cash equity investment applied to eligible project expenditures.</toolTip></assist><ui><numericEdit/></ui></field>
+      <field name="inKindAmount"><caption placement="top"><value><text>Eligible In-Kind Contributions</text></value></caption><assist><toolTip>Monetary value of donated services, goods, or volunteer professional labor.</toolTip></assist><ui><numericEdit/></ui></field>
+      <field name="totalActualRevenues"><caption placement="top"><value><text>TOTAL ACTUAL PROJECT REVENUE (CAD $)</text></value></caption><assist><toolTip>Calculated sum of all revenue sources. This must balance against total eligible project expenditures.</toolTip><speak>Total actual project revenue in Canadian Dollars</speak></assist><ui><numericEdit/></ui><validate nullTest="error"><script>Sum(cbfContribution, otherFederalGrants, provincialFunding, municipalFunding, privateRevenues, publisherOwnCash, inKindAmount)</script><message><text>Total revenues must equal the sum of line items.</text></message></validate></field>
     </subform>
     <subform name="projectExpenditures">
-      <field name="editorialCosts"><caption placement="top"><value><text>Direct Editorial &amp; Translation Costs</text></value></caption><ui><numericEdit/></ui></field>
-      <field name="productionCosts"><caption placement="top"><value><text>Production &amp; Print Manufacturing</text></value></caption><ui><numericEdit/></ui></field>
-      <field name="digitalTechnologyCosts"><caption placement="top"><value><text>Digital E-pub &amp; Audio Production</text></value></caption><ui><numericEdit/></ui></field>
-      <field name="marketingPromotionCosts"><caption placement="top"><value><text>Marketing &amp; National Promotion</text></value></caption><ui><numericEdit/></ui></field>
-      <field name="professionalFees"><caption placement="top"><value><text>Professional Accounting &amp; Audit Fees</text></value></caption><ui><numericEdit/></ui></field>
-      <field name="internshipSalaries"><caption placement="top"><value><text>Publishing Internship Stipends</text></value></caption><ui><numericEdit/></ui></field>
-      <field name="totalActualExpenditures"><caption placement="top"><value><text>TOTAL ELIGIBLE EXPENDITURES (CAD $)</text></value></caption><ui><numericEdit/></ui><validate nullTest="error"><script>Sum(editorialCosts, productionCosts, digitalTechnologyCosts, marketingPromotionCosts, professionalFees, internshipSalaries)</script><message><text>Total expenditures must equal the sum of expense categories.</text></message></validate></field>
-      <field name="netVarianceAmount"><caption placement="top"><value><text>Net Project Balance (Surplus/Deficit)</text></value></caption><ui><textEdit/></ui><validate><message><text>Net balance must equal Total Revenues minus Total Expenditures.</text></message></validate></field>
-      <field name="varianceExplanations"><caption placement="top"><value><text>Budget Variance Explanations &amp; Notes</text></value></caption><ui><textEdit multiLine="1"/></ui></field>
+      <field name="editorialCosts"><caption placement="top"><value><text>Direct Editorial &amp; Translation Costs</text></value></caption><assist><toolTip>Direct fees paid to Canadian freelance editors, copyeditors, proofreaders, and translators.</toolTip></assist><ui><numericEdit/></ui></field>
+      <field name="productionCosts"><caption placement="top"><value><text>Production &amp; Print Manufacturing</text></value></caption><assist><toolTip>Costs of typesetting, interior layout, cover design, and Canadian print manufacturing.</toolTip></assist><ui><numericEdit/></ui></field>
+      <field name="digitalTechnologyCosts"><caption placement="top"><value><text>Digital E-pub &amp; Audio Production</text></value></caption><assist><toolTip>Costs of accessible digital editions, ePub3 reflowable production, and audiobook narration.</toolTip></assist><ui><numericEdit/></ui></field>
+      <field name="marketingPromotionCosts"><caption placement="top"><value><text>Marketing &amp; National Promotion</text></value></caption><assist><toolTip>National author promotion tours, digital marketing campaigns, and literary festival displays.</toolTip></assist><ui><numericEdit/></ui></field>
+      <field name="professionalFees"><caption placement="top"><value><text>Professional Accounting &amp; Audit Fees</text></value></caption><assist><toolTip>External CPA compliance audits and legal consultation directly tied to project delivery.</toolTip></assist><ui><numericEdit/></ui></field>
+      <field name="internshipSalaries"><caption placement="top"><value><text>Publishing Internship Stipends</text></value></caption><assist><toolTip>Stipends and professional development wages for publishing intern placements.</toolTip></assist><ui><numericEdit/></ui></field>
+      <field name="totalActualExpenditures"><caption placement="top"><value><text>TOTAL ELIGIBLE EXPENDITURES (CAD $)</text></value></caption><assist><toolTip>Grand total of all project expenditures. Summed automatically from expense categories.</toolTip><speak>Total eligible expenditures in Canadian Dollars</speak></assist><ui><numericEdit/></ui><validate nullTest="error"><script>Sum(editorialCosts, productionCosts, digitalTechnologyCosts, marketingPromotionCosts, professionalFees, internshipSalaries)</script><message><text>Total expenditures must equal the sum of expense categories.</text></message></validate></field>
+      <field name="netVarianceAmount"><caption placement="top"><value><text>Net Project Balance (Surplus/Deficit)</text></value></caption><assist><toolTip>Calculated variance between revenues and expenditures. Surplus or deficit over 10% requires justification.</toolTip></assist><ui><textEdit/></ui><validate><message><text>Net balance must equal Total Revenues minus Total Expenditures.</text></message></validate></field>
+      <field name="varianceExplanations"><caption placement="top"><value><text>Budget Variance Explanations &amp; Notes</text></value></caption><assist><toolTip>Provide line-by-line explanation of cost reallocations between budget categories.</toolTip></assist><ui><textEdit multiLine="1"/></ui></field>
     </subform>
     <subform name="performanceMetrics">
-      <field name="titlesPublished"><caption placement="top"><value><text>Canadian Titles Published / Promoted</text></value></caption><ui><textEdit/></ui><validate><message><text>Number of published titles cannot be negative.</text></message></validate></field>
-      <field name="printCopiesProduced"><caption placement="top"><value><text>Print Copies Produced</text></value></caption><ui><textEdit/></ui></field>
-      <field name="digitalUnitsSold"><caption placement="top"><value><text>Digital / Audio Units Sold</text></value></caption><ui><textEdit/></ui></field>
+      <field name="titlesPublished"><caption placement="top"><value><text>Canadian Titles Published / Promoted</text></value></caption><assist><toolTip>Total count of eligible Canadian-authored book titles published or marketed during this agreement.</toolTip></assist><ui><textEdit/></ui><validate><message><text>Number of published titles cannot be negative.</text></message></validate></field>
+      <field name="printCopiesProduced"><caption placement="top"><value><text>Print Copies Produced</text></value></caption><assist><toolTip>Total physical book copies manufactured by Canadian printing presses.</toolTip></assist><ui><textEdit/></ui></field>
+      <field name="digitalUnitsSold"><caption placement="top"><value><text>Digital / Audio Units Sold</text></value></caption><assist><toolTip>Total commercial downloads and streaming subscriptions for digital e-books and audiobooks.</toolTip></assist><ui><textEdit/></ui></field>
     </subform>
     <subform name="certificationDeclaration">
-      <field name="authorizedSignatoryName"><caption placement="top"><value><text>Authorized Signatory Legal Name</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><message><text>Authorized Signatory Name is required for certification.</text></message></validate></field>
-      <field name="signatoryTitle"><caption placement="top"><value><text>Signatory Official Title</text></value></caption><ui><textEdit/></ui><validate nullTest="error"><message><text>Signatory Title is required.</text></message></validate></field>
-      <field name="signatureDate"><caption placement="top"><value><text>Certification Date</text></value></caption><ui><dateTimeEdit/></ui><validate nullTest="error"><picture>date{YYYY-MM-DD}</picture><message><text>Date must be in YYYY-MM-DD format.</text></message></validate></field>
-      <field name="authorizedSignature"><caption placement="top"><value><text>Digital Electronic Signature Block</text></value></caption><ui><signature/></ui><validate nullTest="error"><message><text>Electronic signature is required to submit final report.</text></message></validate></field>
+      <field name="authorizedSignatoryName"><caption placement="top"><value><text>Authorized Signatory Legal Name</text></value></caption><assist><toolTip>Full legal name of the signing officer authorized to bind the recipient organization.</toolTip></assist><ui><textEdit/></ui><validate nullTest="error"><message><text>Authorized Signatory Name is required for certification.</text></message></validate></field>
+      <field name="signatoryTitle"><caption placement="top"><value><text>Signatory Official Title</text></value></caption><assist><toolTip>Corporate title of the signing officer (e.g. Managing Director, Publisher, Chief Financial Officer).</toolTip></assist><ui><textEdit/></ui><validate nullTest="error"><message><text>Signatory Title is required.</text></message></validate></field>
+      <field name="signatureDate"><caption placement="top"><value><text>Certification Date</text></value></caption><assist><toolTip>Calendar date when the certification attestation is executed (YYYY-MM-DD).</toolTip></assist><ui><dateTimeEdit/></ui><validate nullTest="error"><picture>date{YYYY-MM-DD}</picture><message><text>Date must be in YYYY-MM-DD format.</text></message></validate></field>
+      <field name="authorizedSignature"><caption placement="top"><value><text>Digital Electronic Signature Block</text></value></caption><assist><toolTip>Type full legal name to apply binding electronic signature under Canadian Uniform Electronic Commerce standards.</toolTip><speak>Authorized digital signature certification</speak></assist><ui><signature/></ui><validate nullTest="error"><message><text>Electronic signature is required to submit final report.</text></message></validate></field>
     </subform>
   </subform>
 </template>`;

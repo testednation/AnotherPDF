@@ -35,12 +35,15 @@ import {
   ExternalLink,
   Sliders,
   CheckCircle,
-  FileCheck,
   AlertTriangle,
   AlertCircle,
+  Undo2,
+  Redo2,
+  Lightbulb,
 } from 'lucide-react';
 import { XFAField, XFASubform, ExtractedResourceManifest } from '../types/pdf';
 import { validateAllFields } from '../utils/validationEngine';
+import { HistoryEntry } from '../hooks/useFormHistory';
 import { PdfCanvasViewer } from './PdfCanvasViewer';
 import { XfaFormEditor } from './XfaFormEditor';
 import { PreflightAuditView } from './PreflightAuditView';
@@ -76,6 +79,13 @@ interface AcrobatWorkspaceProps {
   onShowToast: (msg: string) => void;
   onSwitchToStudioUI: () => void;
   isExportingPdf: boolean;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  history?: HistoryEntry[];
+  currentIndex?: number;
+  jumpToHistoryIndex?: (index: number) => void;
 }
 
 type LeftPanelTab = 'none' | 'thumbnails' | 'bookmarks' | 'fields' | 'attachments';
@@ -107,6 +117,13 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
   onShowToast,
   onSwitchToStudioUI,
   isExportingPdf,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
+  history = [],
+  currentIndex = -1,
+  jumpToHistoryIndex,
 }) => {
   // Navigation & Tool panels state
   const [leftPanel, setLeftPanel] = useState<LeftPanelTab>('fields');
@@ -307,6 +324,39 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
               <div className="absolute top-full left-0 mt-1 w-52 bg-[#2a2a2a] border border-[#444] rounded shadow-2xl py-1 text-xs text-slate-200 z-50">
                 <button
                   onClick={() => {
+                    onUndo?.();
+                    setActiveMenu(null);
+                  }}
+                  disabled={!canUndo}
+                  className={`w-full text-left px-3 py-1.5 flex items-center justify-between ${
+                    canUndo ? 'hover:bg-[#3a3a3a] text-slate-200' : 'text-slate-500 cursor-not-allowed'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Undo2 className="w-3.5 h-3.5" />
+                    <span>Undo</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">Ctrl+Z</span>
+                </button>
+                <button
+                  onClick={() => {
+                    onRedo?.();
+                    setActiveMenu(null);
+                  }}
+                  disabled={!canRedo}
+                  className={`w-full text-left px-3 py-1.5 flex items-center justify-between ${
+                    canRedo ? 'hover:bg-[#3a3a3a] text-slate-200' : 'text-slate-500 cursor-not-allowed'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Redo2 className="w-3.5 h-3.5" />
+                    <span>Redo</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">Ctrl+Y</span>
+                </button>
+                <div className="h-px bg-[#3e3e3e] my-1" />
+                <button
+                  onClick={() => {
                     setRightTool('formEditor');
                     setActiveMenu(null);
                   }}
@@ -493,6 +543,45 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
           </button>
 
           <div className="w-px h-5 bg-[#444] mx-1" />
+
+          {/* Undo & Redo Quick Tools */}
+          <button
+            onClick={onUndo}
+            disabled={!canUndo}
+            className={`p-1.5 rounded transition-colors ${
+              canUndo ? 'text-slate-200 hover:bg-[#444]' : 'text-slate-600 cursor-not-allowed'
+            }`}
+            title="Undo field change (Ctrl+Z)"
+          >
+            <Undo2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={onRedo}
+            disabled={!canRedo}
+            className={`p-1.5 rounded transition-colors ${
+              canRedo ? 'text-slate-200 hover:bg-[#444]' : 'text-slate-600 cursor-not-allowed'
+            }`}
+            title="Redo field change (Ctrl+Y)"
+          >
+            <Redo2 className="w-4 h-4" />
+          </button>
+
+          <div className="w-px h-5 bg-[#444] mx-1" />
+
+          {/* Simple Mode (Beginner) Quick Action */}
+          <button
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('xfa_editor_mode', 'beginner');
+              }
+              setRightTool('formEditor');
+            }}
+            className="px-2.5 py-1 rounded bg-emerald-950/80 hover:bg-emerald-900/90 text-emerald-300 border border-emerald-700/80 flex items-center gap-1.5 text-xs transition-colors"
+            title="Open Simple Beginner Form Wizard"
+          >
+            <Lightbulb className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Beginner Wizard</span>
+          </button>
 
           {/* Fill & Sign Quick Action */}
           <button
@@ -843,6 +932,14 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                   onLoadSampleXfa={onLoadCanadaBookFund}
                   onSwitchToResources={() => setRightTool('resources')}
                   onBulkUpdateFields={onBulkUpdateFields}
+                  onExportPdf={onExportPdf}
+                  canUndo={canUndo}
+                  canRedo={canRedo}
+                  onUndo={onUndo}
+                  onRedo={onRedo}
+                  history={history}
+                  currentIndex={currentIndex}
+                  jumpToHistoryIndex={jumpToHistoryIndex}
                 />
               )}
 

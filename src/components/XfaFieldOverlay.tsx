@@ -11,6 +11,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { validateField } from '../utils/validationEngine';
+import { getFieldTooltipGuide } from '../utils/xfaTooltipHelper';
 
 interface XfaFieldOverlayProps {
   fields: XFAField[];
@@ -190,46 +191,68 @@ export const XfaFieldOverlay: React.FC<XfaFieldOverlayProps> = ({
             </div>
 
             {/* Hover Tooltip Card */}
-            {isHovered && !isSelected && (
-              <div
-                className="absolute left-0 bottom-full mb-1.5 z-40 bg-slate-900/95 border border-slate-700/80 rounded-lg p-2.5 shadow-2xl text-slate-100 min-w-[200px] max-w-xs pointer-events-none backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
-              >
-                <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5">
-                  <span className="font-semibold text-xs text-sky-300 truncate">
-                    {field.caption}
-                  </span>
-                  <span className="text-[9px] font-mono px-1 py-0.2 bg-slate-800 text-slate-300 rounded uppercase">
-                    {field.type}
-                  </span>
-                </div>
-                <div className="mt-1 space-y-0.5 text-[10px] font-mono text-slate-400">
-                  <div>Name: <span className="text-slate-200">{field.name}</span></div>
-                  <div>Binding: <span className="text-slate-300 truncate">{field.dataRef || '-'}</span></div>
-                  <div>Value: <span className="text-emerald-400 font-semibold">{field.value || '(empty)'}</span></div>
-                </div>
-
-                {/* Validation Errors in Tooltip */}
-                {fieldIssues.length > 0 && (
-                  <div className="mt-1.5 pt-1.5 border-t border-slate-800 space-y-1">
-                    {fieldIssues.map(issue => (
-                      <div
-                        key={issue.id}
-                        className={`text-[10px] flex items-start gap-1 ${
-                          issue.severity === 'error' ? 'text-rose-300' : 'text-amber-300'
-                        }`}
-                      >
-                        <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
-                        <span>{issue.message}</span>
-                      </div>
-                    ))}
+            {isHovered && !isSelected && (() => {
+              const guide = getFieldTooltipGuide(field);
+              return (
+                <div
+                  className="absolute left-0 bottom-full mb-1.5 z-40 bg-slate-900/95 border border-slate-700/80 rounded-lg p-2.5 shadow-2xl text-slate-100 min-w-[220px] max-w-sm pointer-events-none backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
+                >
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5">
+                    <span className="font-semibold text-xs text-sky-300 truncate">
+                      {field.caption}
+                    </span>
+                    <span className="text-[9px] font-mono px-1 py-0.2 bg-slate-800 text-slate-300 rounded uppercase">
+                      {field.type}
+                    </span>
                   </div>
-                )}
 
-                <div className="mt-1.5 text-[9px] text-sky-400/80">
-                  Click to inspect properties &amp; edit appearance
+                  {/* Guidance from XFA Assist / Template */}
+                  {guide.guidance && (
+                    <div className="mt-1.5 p-1.5 rounded bg-slate-950/80 border border-slate-800 text-[10px] text-slate-300 leading-snug">
+                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                        <span className="text-[9px] font-semibold text-sky-400 uppercase tracking-wider flex items-center gap-1">
+                          <HelpCircle className="w-2.5 h-2.5" />
+                          <span>{guide.hasExplicitAssist ? 'XFA Assist' : 'Guidance'}</span>
+                        </span>
+                        {guide.formatHint && (
+                          <span className="text-[8px] font-mono px-1 rounded bg-sky-950 text-sky-300 border border-sky-800">
+                            {guide.formatHint}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-slate-300">{guide.guidance}</p>
+                    </div>
+                  )}
+
+                  <div className="mt-1.5 space-y-0.5 text-[10px] font-mono text-slate-400">
+                    <div>Name: <span className="text-slate-200">{field.name}</span></div>
+                    <div>Binding: <span className="text-slate-300 truncate">{field.dataRef || '-'}</span></div>
+                    <div>Value: <span className="text-emerald-400 font-semibold">{field.value || '(empty)'}</span></div>
+                  </div>
+
+                  {/* Validation Errors in Tooltip */}
+                  {fieldIssues.length > 0 && (
+                    <div className="mt-1.5 pt-1.5 border-t border-slate-800 space-y-1">
+                      {fieldIssues.map(issue => (
+                        <div
+                          key={issue.id}
+                          className={`text-[10px] flex items-start gap-1 ${
+                            issue.severity === 'error' ? 'text-rose-300' : 'text-amber-300'
+                          }`}
+                        >
+                          <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+                          <span>{issue.message}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-1.5 text-[9px] text-sky-400/80">
+                    Click to inspect properties &amp; edit appearance
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         );
       })}
