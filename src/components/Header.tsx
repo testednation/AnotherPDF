@@ -1,12 +1,12 @@
 import React from 'react';
-import { FileText, Download, FolderArchive, ShieldCheck, FileSpreadsheet, Layers, Keyboard } from 'lucide-react';
+import { FileText, Download, FolderArchive, ShieldCheck, FileSpreadsheet, Layers, Keyboard, Network, Sparkles } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { GlobalFieldSearch } from './GlobalFieldSearch';
 import { XFAField } from '../types/pdf';
 
 interface HeaderProps {
-  activeTab: 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch';
-  setActiveTab: (tab: 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch') => void;
+  activeTab: 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch' | 'fieldmap' | 'assistant';
+  setActiveTab: (tab: 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch' | 'fieldmap' | 'assistant') => void;
   onExportPdf: () => void;
   onDownloadAllResources: () => void;
   isExportingPdf: boolean;
@@ -18,7 +18,9 @@ interface HeaderProps {
   fields?: XFAField[];
   onSelectField?: (field: XFAField) => void;
   onOpenShortcuts?: () => void;
+  uiMode?: 'acrobat' | 'studio';
   onSwitchToAcrobatUI?: () => void;
+  onSwitchToStudioUI?: () => void;
   onLoadCanadaBookFund?: () => void;
 }
 
@@ -36,7 +38,9 @@ export const Header: React.FC<HeaderProps> = ({
   fields = [],
   onSelectField,
   onOpenShortcuts,
+  uiMode = 'studio',
   onSwitchToAcrobatUI,
+  onSwitchToStudioUI,
   onLoadCanadaBookFund,
 }) => {
   return (
@@ -59,8 +63,25 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Zone 2: Concise single-line navigation links */}
       <nav className="flex items-center gap-1 sm:gap-1.5 text-xs md:text-sm font-medium text-slate-300">
         <button
+          onClick={() => setActiveTab('preview')}
+          title="PDF Canvas & Fields (Alt + 1)"
+          className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'preview'
+              ? 'bg-slate-800 text-sky-400 font-semibold shadow-xs'
+              : 'hover:text-slate-100 hover:bg-slate-800/50'
+          }`}
+        >
+          <span>PDF Canvas &amp; Fields</span>
+          {hasXfa && (
+            <span className="text-[10px] px-1.5 py-0.2 bg-sky-950/80 text-sky-300 border border-sky-800/80 rounded font-mono">
+              Visual Map
+            </span>
+          )}
+        </button>
+
+        <button
           onClick={() => setActiveTab('form')}
-          title="Visual Form Editor (Alt + 1)"
+          title="Visual Form Editor (Alt + 2)"
           className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
             activeTab === 'form'
               ? 'bg-slate-800 text-sky-400 font-semibold shadow-xs'
@@ -76,8 +97,40 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         <button
+          onClick={() => setActiveTab('fieldmap')}
+          title="Field Map & Dependency Graph (Alt + 3)"
+          className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'fieldmap'
+              ? 'bg-indigo-900/60 text-indigo-300 font-semibold shadow-xs border border-indigo-700/60'
+              : 'hover:text-slate-100 hover:bg-slate-800/50'
+          }`}
+        >
+          <Network className="w-3.5 h-3.5 text-indigo-400" />
+          <span>Field Map</span>
+          <span className="text-[10px] px-1.5 py-0.2 bg-indigo-950/90 text-indigo-300 border border-indigo-800 rounded font-mono">
+            Graph
+          </span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('assistant')}
+          title="Smart Form Assistant: AI Autofill & Context Suggestions (Alt + A)"
+          className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'assistant'
+              ? 'bg-purple-900/60 text-purple-200 font-semibold shadow-xs border border-purple-700/60'
+              : 'hover:text-purple-200 hover:bg-slate-800/50 text-slate-300'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+          <span>AI Assistant</span>
+          <span className="text-[10px] px-1.5 py-0.2 bg-purple-950/90 text-purple-300 border border-purple-800 rounded font-mono">
+            Gemini
+          </span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('xml')}
-          title="XFA XML Data (Alt + 2)"
+          title="XFA XML Data (Alt + 4)"
           className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'xml'
               ? 'bg-slate-800 text-sky-400 font-semibold shadow-xs'
@@ -85,23 +138,6 @@ export const Header: React.FC<HeaderProps> = ({
           }`}
         >
           XFA XML Data
-        </button>
-
-        <button
-          onClick={() => setActiveTab('preview')}
-          title="PDF Canvas & Fields (Alt + 3)"
-          className={`px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
-            activeTab === 'preview'
-              ? 'bg-slate-800 text-sky-400 font-semibold shadow-xs'
-              : 'hover:text-slate-100 hover:bg-slate-800/50'
-          }`}
-        >
-          <span>PDF Canvas &amp; Fields</span>
-          {hasXfa && (
-            <span className="text-[10px] px-1.5 py-0.2 bg-sky-950/80 text-sky-300 border border-sky-800/80 rounded font-mono">
-              Visual Map
-            </span>
-          )}
         </button>
 
         <button
@@ -187,15 +223,34 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Zone 4: Primary Actions & PWA Install */}
       <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+        {/* Acrobat vs Studio UI Segmented Switcher */}
         {onSwitchToAcrobatUI && (
-          <button
-            onClick={onSwitchToAcrobatUI}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors shadow-xs"
-            title="Switch to Adobe Acrobat Style UI"
-          >
-            <span className="w-2 h-2 rounded-full bg-white/90 animate-pulse" />
-            <span>Acrobat UI</span>
-          </button>
+          <div className="flex items-center p-0.5 rounded-lg bg-slate-800/90 border border-slate-700 shrink-0">
+            <button
+              onClick={onSwitchToAcrobatUI}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
+                uiMode === 'acrobat'
+                  ? 'bg-[#eb1000] text-white shadow-xs'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+              }`}
+              title="Switch to Adobe Acrobat Style UI"
+            >
+              <span className={`w-2 h-2 rounded-full ${uiMode === 'acrobat' ? 'bg-white' : 'bg-[#eb1000]'}`} />
+              <span>Acrobat</span>
+            </button>
+            <button
+              onClick={onSwitchToStudioUI}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
+                uiMode === 'studio'
+                  ? 'bg-sky-500 text-slate-950 shadow-xs'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+              }`}
+              title="Switch to Developer Studio UI"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Studio</span>
+            </button>
+          </div>
         )}
 
         <PWAInstallButton />

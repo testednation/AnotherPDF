@@ -8,6 +8,7 @@ import { PdfCanvasViewer } from './components/PdfCanvasViewer';
 import { PreflightAuditView } from './components/PreflightAuditView';
 import { ConversionView } from './components/ConversionView';
 import { BatchProcessorView } from './components/BatchProcessorView';
+import { FieldMapPanel } from './components/FieldMapPanel';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { useGlobalShortcuts, WorkspaceTab } from './hooks/useGlobalShortcuts';
@@ -27,6 +28,7 @@ import {
 import { extractAllPdfResources, downloadAllResourcesAsZip } from './utils/resourceExtractor';
 import { createSampleXfaPdf, createSampleMediaPdf, createCanadaBookFundXfaPdf } from './utils/samplePdfs';
 import { AcrobatWorkspace } from './components/AcrobatWorkspace';
+import { SmartFormAssistant } from './components/SmartFormAssistant';
 import { runPreflightAudit } from './utils/preflightEngine';
 import {
   XFASubform,
@@ -43,7 +45,7 @@ export default function App() {
   const [subforms, setSubforms] = useState<XFASubform[]>([]);
   const [xfaPackets, setXfaPackets] = useState<XFAPackets>({ otherPackets: {} });
   const [manifest, setManifest] = useState<ExtractedResourceManifest | null>(null);
-  const [activeTab, setActiveTab] = useState<'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch'>('form');
+  const [activeTab, setActiveTab] = useState<'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch' | 'fieldmap' | 'assistant'>('preview');
   const [preflightProfile, setPreflightProfile] = useState<PreflightProfile>('comprehensive');
 
   const [isLoading, setIsLoading] = useState(true);
@@ -130,14 +132,8 @@ export default function App() {
       const resManifest = await extractAllPdfResources(bytes, packets);
       setManifest(resManifest);
 
-      // Automatically route tab based on form presence
-      if (parsedSubforms.length > 0) {
-        setActiveTab('form');
-      } else if (resManifest.images.length > 0 || resManifest.fonts.length > 0) {
-        setActiveTab('resources');
-      } else {
-        setActiveTab('preview');
-      }
+      // By default, open the PDF canvas viewer so the rendered document is immediately visible
+      setActiveTab('preview');
     } catch (err: any) {
       console.error('Error loading PDF document:', err);
       showToast(`Error opening PDF: ${err.message}`);
@@ -609,12 +605,14 @@ export default function App() {
       setActiveTab(tab);
       const tabLabels: Record<string, string> = {
         form: 'Visual Form Editor',
+        fieldmap: 'Field Map & Dependency Graph',
         xml: 'XFA XML Data',
         preview: 'PDF Canvas & Fields',
         preflight: 'Preflight Audit',
         convert: 'Document Conversion',
         resources: 'Extract Resources',
         batch: 'Batch Extract',
+        assistant: 'Smart Form Assistant (Gemini 3.8 Flash)',
       };
       showToast(`Workspace: ${tabLabels[tab] || tab}`);
     },
@@ -636,6 +634,13 @@ export default function App() {
     },
     onToggleShortcutsModal: () => {
       setIsShortcutsModalOpen(prev => !prev);
+    },
+    onToggleUiMode: () => {
+      setUiMode(prev => {
+        const next = prev === 'acrobat' ? 'studio' : 'acrobat';
+        showToast(`Switched to ${next === 'acrobat' ? 'Adobe Acrobat Pro UI' : 'Developer Studio UI'}`);
+        return next;
+      });
     },
     isShortcutsModalOpen,
     canUndo: formHistory.canUndo,
@@ -746,7 +751,9 @@ export default function App() {
         fields={allFields}
         onSelectField={handleHeaderSelectField}
         onOpenShortcuts={() => setIsShortcutsModalOpen(true)}
+        uiMode={uiMode}
         onSwitchToAcrobatUI={() => setUiMode('acrobat')}
+        onSwitchToStudioUI={() => setUiMode('studio')}
         onLoadCanadaBookFund={handleLoadCanadaBookFund}
       />
 
@@ -786,6 +793,7 @@ export default function App() {
                 onResetDefaults={handleResetDefaults}
                 onLoadSampleXfa={handleLoadSampleXfa}
                 onSwitchToResources={() => setActiveTab('resources')}
+                onSwitchToFieldMap={() => setActiveTab('fieldmap')}
                 onBulkUpdateFields={handleBulkUpdateFields}
                 onExportPdf={handleExportPdf}
                 canUndo={formHistory.canUndo}
@@ -795,6 +803,30 @@ export default function App() {
                 history={formHistory.history}
                 currentIndex={formHistory.currentIndex}
                 jumpToHistoryIndex={formHistory.jumpToHistoryIndex}
+              />
+            )}
+
+            {activeTab === 'fieldmap' && (
+              <FieldMapPanel
+                subforms={subforms}
+                allFields={allFields}
+                templateXml={xfaPackets.templateXml}
+                onNavigateToField={fieldId => {
+                  setTargetFieldId(fieldId);
+                  setActiveTab('preview');
+                  showToast('Navigated to field in PDF Canvas Viewer');
+                }}
+                onNavigateToFormEditor={fieldId => {
+                  setActiveTab('form');
+                  showToast('Switched to Visual Form Editor');
+                  setTimeout(() => {
+                    const el = document.getElementById(`field-${fieldId}`);
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      el.focus();
+                    }
+                  }, 120);
+                }}
               />
             )}
 
@@ -863,6 +895,31 @@ export default function App() {
 
             {activeTab === 'batch' && (
               <BatchProcessorView onLoadSinglePdf={loadPdfData} />
+            )}
+
+            {activeTab === 'assistant' && (
+              <div className="max-w-5xl mx-auto py-6 px-4 sm:px-6 h-[calc(100vh-130px)]">
+                <div className="h-full rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
+                  <SmartFormAssistant
+                    fields={allFields}
+                    subforms={subforms}
+                    filename={filename}
+                    onApplyFieldSuggestion={(fieldId, val) => {
+                      handleFieldValueChange(fieldId, val);
+                      showToast('Applied AI suggestion to field');
+                    }}
+                    onBulkApplySuggestions={(items) => {
+                      items.forEach(item => handleFieldValueChange(item.fieldId, item.value));
+                      showToast(`Applied ${items.length} AI suggestions to form`);
+                    }}
+                    onNavigateToField={(fieldId) => {
+                      setTargetFieldId(fieldId);
+                      setActiveTab('form');
+                      showToast('Navigated to field in Form Editor');
+                    }}
+                  />
+                </div>
+              </div>
             )}
           </>
         )}

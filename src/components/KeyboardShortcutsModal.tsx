@@ -31,7 +31,7 @@ export interface ShortcutItem {
 interface KeyboardShortcutsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onTabSelect?: (tab: 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch') => void;
+  onTabSelect?: (tab: 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch' | 'fieldmap' | 'assistant') => void;
   onExportPdf?: () => void;
   onExportXml?: () => void;
   onDownloadAllZip?: () => void;
@@ -160,37 +160,54 @@ interface ModalSection {
       icon: <Layers className="w-4 h-4 text-emerald-400" />,
       items: [
         {
+          keys: ['Alt', 'U'],
+          description: 'Toggle UI Mode (Adobe Acrobat Pro vs Developer Studio)',
+          badge: 'UI Mode',
+        },
+        {
           keys: ['Alt', '1'],
-          description: 'Switch to Visual Form Editor',
-          onClick: () => onTabSelect?.('form'),
-        },
-        {
-          keys: ['Alt', '2'],
-          description: 'Switch to XFA XML Data packets',
-          onClick: () => onTabSelect?.('xml'),
-        },
-        {
-          keys: ['Alt', '3'],
           description: 'Switch to PDF Canvas & Fields Visual Map',
           onClick: () => onTabSelect?.('preview'),
         },
         {
+          keys: ['Alt', '2'],
+          description: 'Switch to Visual Form Editor',
+          onClick: () => onTabSelect?.('form'),
+        },
+        {
+          keys: ['Alt', '3'],
+          description: 'Switch to Field Map & Dependency Graph',
+          onClick: () => onTabSelect?.('fieldmap'),
+          badge: 'Data Flow',
+        },
+        {
+          keys: ['Alt', 'A'],
+          description: 'Open Smart Form Assistant (Gemini 3.8 Flash)',
+          onClick: () => onTabSelect?.('assistant'),
+          badge: 'AI Assist',
+        },
+        {
           keys: ['Alt', '4'],
+          description: 'Switch to XFA XML Data packets',
+          onClick: () => onTabSelect?.('xml'),
+        },
+        {
+          keys: ['Alt', '5'],
           description: 'Switch to Preflight Audit & Diagnostics',
           onClick: () => onTabSelect?.('preflight'),
         },
         {
-          keys: ['Alt', '5'],
+          keys: ['Alt', '6'],
           description: 'Switch to Document Conversion (Word / HTML)',
           onClick: () => onTabSelect?.('convert'),
         },
         {
-          keys: ['Alt', '6'],
+          keys: ['Alt', '7'],
           description: 'Switch to Resource Extractor (Images, Fonts)',
           onClick: () => onTabSelect?.('resources'),
         },
         {
-          keys: ['Alt', '7'],
+          keys: ['Alt', '8'],
           description: 'Switch to Batch Processing (Bulk XFA -> CSV)',
           onClick: () => onTabSelect?.('batch'),
         },
@@ -246,6 +263,11 @@ interface ModalSection {
         {
           keys: ['0'],
           description: 'Reset Zoom to default fit',
+        },
+        {
+          keys: ['Alt', 'D'],
+          description: 'Toggle Freehand Drawing Layer (Signatures & Notes)',
+          badge: 'Drawing',
         },
       ],
     },

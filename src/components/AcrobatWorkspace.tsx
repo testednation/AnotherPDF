@@ -40,6 +40,7 @@ import {
   Undo2,
   Redo2,
   Lightbulb,
+  Network,
 } from 'lucide-react';
 import { XFAField, XFASubform, ExtractedResourceManifest } from '../types/pdf';
 import { validateAllFields } from '../utils/validationEngine';
@@ -51,6 +52,8 @@ import { ConversionView } from './ConversionView';
 import { ResourceExtractorView } from './ResourceExtractorView';
 import { BatchProcessorView } from './BatchProcessorView';
 import { XmlEditor } from './XmlEditor';
+import { FieldMapPanel } from './FieldMapPanel';
+import { SmartFormAssistant } from './SmartFormAssistant';
 import { PreflightSummary } from '../types/preflight';
 
 interface AcrobatWorkspaceProps {
@@ -89,7 +92,7 @@ interface AcrobatWorkspaceProps {
 }
 
 type LeftPanelTab = 'none' | 'thumbnails' | 'bookmarks' | 'fields' | 'attachments';
-type RightToolType = 'none' | 'formEditor' | 'export' | 'preflight' | 'convert' | 'resources' | 'xml' | 'batch';
+type RightToolType = 'none' | 'formEditor' | 'export' | 'preflight' | 'convert' | 'resources' | 'xml' | 'batch' | 'fieldMap' | 'assistant';
 
 export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
   pdfBytes,
@@ -207,15 +210,17 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
 
           {/* Switcher Toggle Pill */}
           <div className="flex items-center p-0.5 rounded-lg bg-slate-900 border border-slate-700">
-            <span className="px-2 py-0.5 text-[11px] font-semibold bg-red-600 text-white rounded shadow-xs flex items-center gap-1">
-              <span>Acrobat View</span>
+            <span className="px-2.5 py-1 text-[11px] font-semibold bg-[#eb1000] text-white rounded shadow-xs flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-white" />
+              <span>Acrobat</span>
             </span>
             <button
               onClick={onSwitchToStudioUI}
-              className="px-2 py-0.5 text-[11px] font-medium text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1"
-              title="Switch back to AcroXFA Studio UI layout"
+              className="px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:text-white transition-colors flex items-center gap-1.5"
+              title="Switch to Developer Studio workspace"
             >
-              <span>Studio View</span>
+              <Layers className="w-3 h-3 text-sky-400" />
+              <span>Studio</span>
             </button>
           </div>
         </div>
@@ -502,8 +507,9 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
       <div className="bg-[#333333] border-b border-[#222222] px-3 py-1.5 flex items-center justify-between gap-3 text-xs text-slate-200">
         <div className="flex items-center gap-1.5 flex-wrap">
           {/* File Action Icons */}
-          <label className="p-1.5 rounded hover:bg-[#444] cursor-pointer text-slate-300 hover:text-white transition-colors" title="Open PDF File">
-            <FolderOpen className="w-4 h-4" />
+          <label className="px-2.5 py-1 rounded bg-[#3c3c3c] hover:bg-[#484848] border border-[#4a4a4a] cursor-pointer text-slate-200 hover:text-white transition-colors flex items-center gap-1.5 text-xs font-medium shadow-xs" title="Open PDF File (Ctrl+O)">
+            <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
+            <span>Open PDF</span>
             <input type="file" accept=".pdf" className="hidden" onChange={e => e.target.files?.[0] && onFileUpload(e.target.files[0])} />
           </label>
           <button onClick={onExportPdf} disabled={isExportingPdf} className="p-1.5 rounded hover:bg-[#444] text-slate-300 hover:text-white transition-colors disabled:opacity-50" title="Save PDF (Ctrl+S)">
@@ -540,6 +546,20 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
           >
             <CheckSquare className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Highlight Fields</span>
+          </button>
+
+          {/* Field Dependency Map Quick Button */}
+          <button
+            onClick={() => setRightTool(rightTool === 'fieldMap' ? 'none' : 'fieldMap')}
+            className={`px-2.5 py-1 rounded flex items-center gap-1.5 text-xs font-medium transition-colors ${
+              rightTool === 'fieldMap'
+                ? 'bg-indigo-950/80 text-indigo-300 border border-indigo-700/80'
+                : 'bg-[#404040] text-slate-300 hover:bg-[#4a4a4a]'
+            }`}
+            title="Visualize XFA Field Dependency Graph & Data Flow"
+          >
+            <Network className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="hidden sm:inline">Field Map</span>
           </button>
 
           <div className="w-px h-5 bg-[#444] mx-1" />
@@ -819,6 +839,19 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
         {/* Right Tools Pane (The Iconic Acrobat Pro Right Sidebar) */}
         <div className="w-14 bg-[#262626] border-l border-[#383838] flex flex-col items-center py-3 gap-4 shrink-0 z-20">
           <button
+            onClick={() => setRightTool(rightTool === 'assistant' ? 'none' : 'assistant')}
+            title="Smart Form Assistant (Gemini AI Autofill & Context Suggestions)"
+            className={`p-2.5 rounded-lg transition-colors flex flex-col items-center gap-1 ${
+              rightTool === 'assistant'
+                ? 'bg-purple-600 text-white font-bold shadow-md shadow-purple-950/40'
+                : 'text-purple-300 hover:text-white hover:bg-[#333]'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 text-purple-400" />
+            <span className="text-[9px]">AI Assist</span>
+          </button>
+
+          <button
             onClick={() => setRightTool(rightTool === 'formEditor' ? 'none' : 'formEditor')}
             title={validationReport.errorCount > 0 ? `Prepare Form (${validationReport.errorCount} validation issues)` : 'Edit Form & XFA (Prepare Form)'}
             className={`p-2.5 rounded-lg transition-colors flex flex-col items-center gap-1 relative ${
@@ -832,6 +865,19 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
             )}
             <CheckSquare className="w-4 h-4" />
             <span className="text-[9px]">Form</span>
+          </button>
+
+          <button
+            onClick={() => setRightTool(rightTool === 'fieldMap' ? 'none' : 'fieldMap')}
+            title="Field Map & Dependency Graph"
+            className={`p-2.5 rounded-lg transition-colors flex flex-col items-center gap-1 ${
+              rightTool === 'fieldMap'
+                ? 'bg-indigo-600 text-white font-bold shadow-md'
+                : 'text-slate-300 hover:text-white hover:bg-[#333]'
+            }`}
+          >
+            <Network className="w-4 h-4" />
+            <span className="text-[9px]">Map</span>
           </button>
 
           <button
@@ -902,9 +948,11 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
 
         {/* Right Tool Drawer */}
         {rightTool !== 'none' && (
-          <div className="w-96 bg-[#222222] border-l border-[#383838] flex flex-col shrink-0 z-10 overflow-y-auto animate-in slide-in-from-right duration-150">
+          <div className={`${rightTool === 'fieldMap' || rightTool === 'assistant' ? 'w-[760px] max-w-[85vw]' : 'w-96'} bg-[#222222] border-l border-[#383838] flex flex-col shrink-0 z-10 overflow-y-auto animate-in slide-in-from-right duration-150`}>
             <div className="px-4 py-3 bg-[#1a1a1a] border-b border-[#333] flex items-center justify-between sticky top-0 z-10">
               <span className="text-xs font-semibold text-slate-200 uppercase tracking-wider">
+                {rightTool === 'assistant' && 'Smart Form Assistant (Gemini 3.8 Flash)'}
+                {rightTool === 'fieldMap' && 'XFA Field Map & Dependency Graph'}
                 {rightTool === 'formEditor' && 'Interactive Form & Bulk Editor'}
                 {rightTool === 'export' && 'Export PDF & Form Data'}
                 {rightTool === 'preflight' && 'Preflight PDF Audit'}
@@ -922,6 +970,50 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
             </div>
 
             <div className="p-4 flex-1">
+              {rightTool === 'assistant' && (
+                <div className="h-[750px] -m-4">
+                  <SmartFormAssistant
+                    fields={fields}
+                    subforms={subforms}
+                    filename={filename}
+                    onApplyFieldSuggestion={(fieldId, val) => {
+                      onFieldValueChange(fieldId, val);
+                      onShowToast('Applied AI suggestion to field');
+                    }}
+                    onBulkApplySuggestions={(items) => {
+                      items.forEach(item => onFieldValueChange(item.fieldId, item.value));
+                      onShowToast(`Applied ${items.length} AI suggestions to form`);
+                    }}
+                    onNavigateToField={(fieldId) => {
+                      const f = fields.find(item => item.id === fieldId);
+                      if (f) onFieldValueChange(fieldId, f.value);
+                      setRightTool('formEditor');
+                      onShowToast(`Navigated to field: ${f?.caption || f?.name || fieldId}`);
+                    }}
+                    onClose={() => setRightTool('none')}
+                  />
+                </div>
+              )}
+
+              {rightTool === 'fieldMap' && (
+                <div className="h-[750px] -m-4">
+                  <FieldMapPanel
+                    subforms={subforms}
+                    allFields={fields}
+                    templateXml={xfaPackets.templateXml}
+                    onNavigateToField={fieldId => {
+                      const f = fields.find(item => item.id === fieldId);
+                      if (f) onFieldValueChange(fieldId, f.value);
+                      onShowToast(`Located field: ${f?.caption || f?.name || fieldId}`);
+                    }}
+                    onNavigateToFormEditor={fieldId => {
+                      setRightTool('formEditor');
+                      onShowToast('Switched to Form Editor');
+                    }}
+                  />
+                </div>
+              )}
+
               {rightTool === 'formEditor' && (
                 <XfaFormEditor
                   subforms={subforms}

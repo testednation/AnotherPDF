@@ -1,11 +1,13 @@
 import { useEffect, useCallback } from 'react';
 
-export type WorkspaceTab = 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch';
+export type WorkspaceTab = 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch' | 'fieldmap' | 'assistant';
 
 export const WORKSPACE_TABS: WorkspaceTab[] = [
-  'form',
-  'xml',
   'preview',
+  'form',
+  'fieldmap',
+  'assistant',
+  'xml',
   'preflight',
   'convert',
   'resources',
@@ -25,6 +27,7 @@ interface UseGlobalShortcutsOptions {
   canRedo?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
+  onToggleUiMode?: () => void;
 }
 
 export function useGlobalShortcuts({
@@ -40,6 +43,7 @@ export function useGlobalShortcuts({
   canRedo = false,
   onUndo,
   onRedo,
+  onToggleUiMode,
 }: UseGlobalShortcutsOptions) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -140,9 +144,23 @@ export function useGlobalShortcuts({
         }
       }
 
+      // Direct Jump to AI Assistant: Alt+A
+      if (e.altKey && !hasMeta && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        onTabChange('assistant');
+        return;
+      }
+
+      // 7. Toggle UI mode (Acrobat vs Studio): Alt+U or Cmd/Ctrl+Alt+U
+      if ((e.altKey && !hasMeta && e.key.toLowerCase() === 'u') || (hasMeta && e.altKey && e.key.toLowerCase() === 'u')) {
+        e.preventDefault();
+        onToggleUiMode?.();
+        return;
+      }
+
       // Non-input keybindings
       if (!isInput) {
-        // 7. Toggle Keyboard Shortcuts Modal: '?' (Shift + /)
+        // 8. Toggle Keyboard Shortcuts Modal: '?' (Shift + /)
         if (e.key === '?' || (e.shiftKey && e.key === '/')) {
           e.preventDefault();
           onToggleShortcutsModal();
@@ -157,6 +175,7 @@ export function useGlobalShortcuts({
       onExportXml,
       onExportJson,
       onDownloadZip,
+      onToggleUiMode,
       onToggleShortcutsModal,
       isShortcutsModalOpen,
       canUndo,

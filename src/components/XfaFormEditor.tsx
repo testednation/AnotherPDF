@@ -37,12 +37,28 @@ import {
   Sliders,
   Lightbulb,
   History,
+  Mail,
+  Phone,
+  MapPin,
+  Tag,
+  Palette,
+  CheckCheck,
+  Network,
 } from 'lucide-react';
 import { XFASubform, XFAField, ValidationError } from '../types/pdf';
-import { validateAllFields, quickFixFieldValue } from '../utils/validationEngine';
+import {
+  validateAllFields,
+  quickFixFieldValue,
+  detectFieldDataType,
+  getFieldValidationState,
+  parseCurrencyOrNumber,
+  FieldDataType,
+  FieldDataTypeInfo,
+} from '../utils/validationEngine';
 import { useFormHistory, HistoryEntry } from '../hooks/useFormHistory';
 import { BeginnerFormWizard } from './BeginnerFormWizard';
 import { FieldTooltipPopover } from './FieldTooltipPopover';
+import { SmartFormAssistant } from './SmartFormAssistant';
 
 export interface BulkFieldUpdates {
   readOnly?: boolean;
@@ -61,6 +77,7 @@ interface XfaFormEditorProps {
   onResetDefaults: () => void;
   onLoadSampleXfa: () => void;
   onSwitchToResources: () => void;
+  onSwitchToFieldMap?: () => void;
   onBulkUpdateFields?: (fieldIds: string[], updates: BulkFieldUpdates) => void;
   onExportPdf?: () => void;
   canUndo?: boolean;
@@ -80,6 +97,7 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
   onResetDefaults,
   onLoadSampleXfa,
   onSwitchToResources,
+  onSwitchToFieldMap,
   onBulkUpdateFields,
   onExportPdf,
   canUndo,
@@ -118,6 +136,13 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
   const [showOnlyInvalid, setShowOnlyInvalid] = useState(false);
   const [isValidationDrawerOpen, setIsValidationDrawerOpen] = useState(false);
   const [validationToast, setValidationToast] = useState<string | null>(null);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+
+  // Data Type Filtering & Real-time Highlighting State
+  const [selectedDataTypeFilter, setSelectedDataTypeFilter] = useState<
+    'all' | 'date' | 'numeric' | 'email' | 'phone_postal' | 'invalid' | 'valid'
+  >('all');
+  const [highlightByDataType, setHighlightByDataType] = useState<boolean>(true);
 
   // Internal history tracker fallback if not provided by parent
   const internalHistory = useFormHistory({
@@ -170,21 +195,96 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
     return validateAllFields(allFields);
   }, [allFields]);
 
-  // Filter subforms and fields based on search query and validation filter
+  // Real-time Counts by Data Type & Validation Status
+  const dataTypeCounts = useMemo(() => {
+    let dateCount = 0;
+    let numericCount = 0;
+    let emailCount = 0;
+    let contactCount = 0;
+    let invalidCount = 0;
+    let validCount = 0;
+
+    allFields.forEach(f => {
+      const dt = detectFieldDataType(f).type;
+      const issues = validationReport.fieldErrorMap.get(f.id);
+      const hasErr = issues && issues.some(i => i.severity === 'error');
+      const hasVal = Boolean(f.value && f.value.trim().length > 0 && f.value !== '0');
+
+      if (dt === 'date') dateCount++;
+      if (dt === 'numeric') numericCount++;
+      if (dt === 'email') emailCount++;
+      if (dt === 'phone' || dt === 'postal_code' || dt === 'cra_bn') contactCount++;
+      if (hasErr) invalidCount++;
+      else if (hasVal) validCount++;
+    });
+
+    return { dateCount, numericCount, emailCount, contactCount, invalidCount, validCount };
+  }, [allFields, validationReport]);
+
+  // Filter subforms and fields based on search query, data type, and validation filter
   const filteredSubforms = useMemo(() => {
     let list = subforms;
 
-    // Filter only invalid fields if requested
-    if (showOnlyInvalid) {
+    // Filter by data type or invalidity
+    if (showOnlyInvalid || selectedDataTypeFilter === 'invalid') {
       list = list
         .map(sf => {
-          const invalidFields = sf.fields.filter(f => validationReport.fieldErrorMap.has(f.id));
-          const invalidChildren = sf.subforms.filter(c => c.fields.some(f => validationReport.fieldErrorMap.has(f.id)));
+          const invalidFields = sf.fields.filter(f => {
+            const issues = validationReport.fieldErrorMap.get(f.id);
+            return issues && issues.some(i => i.severity === 'error');
+          });
+          const invalidChildren = sf.subforms.filter(c =>
+            c.fields.some(f => {
+              const issues = validationReport.fieldErrorMap.get(f.id);
+              return issues && issues.some(i => i.severity === 'error');
+            })
+          );
           if (invalidFields.length > 0 || invalidChildren.length > 0) {
             return {
               ...sf,
               fields: invalidFields,
               subforms: invalidChildren,
+            };
+          }
+          return null;
+        })
+        .filter(Boolean) as XFASubform[];
+    } else if (selectedDataTypeFilter !== 'all') {
+      list = list
+        .map(sf => {
+          const matchingFields = sf.fields.filter(f => {
+            const dt = detectFieldDataType(f).type;
+            const issues = validationReport.fieldErrorMap.get(f.id);
+            const hasErr = issues && issues.some(i => i.severity === 'error');
+            const hasVal = Boolean(f.value && f.value.trim().length > 0 && f.value !== '0');
+
+            if (selectedDataTypeFilter === 'date') return dt === 'date';
+            if (selectedDataTypeFilter === 'numeric') return dt === 'numeric';
+            if (selectedDataTypeFilter === 'email') return dt === 'email';
+            if (selectedDataTypeFilter === 'phone_postal') return dt === 'phone' || dt === 'postal_code' || dt === 'cra_bn';
+            if (selectedDataTypeFilter === 'valid') return hasVal && !hasErr;
+            return true;
+          });
+          const matchingChildren = sf.subforms.filter(c =>
+            c.fields.some(f => {
+              const dt = detectFieldDataType(f).type;
+              const issues = validationReport.fieldErrorMap.get(f.id);
+              const hasErr = issues && issues.some(i => i.severity === 'error');
+              const hasVal = Boolean(f.value && f.value.trim().length > 0 && f.value !== '0');
+
+              if (selectedDataTypeFilter === 'date') return dt === 'date';
+              if (selectedDataTypeFilter === 'numeric') return dt === 'numeric';
+              if (selectedDataTypeFilter === 'email') return dt === 'email';
+              if (selectedDataTypeFilter === 'phone_postal') return dt === 'phone' || dt === 'postal_code' || dt === 'cra_bn';
+              if (selectedDataTypeFilter === 'valid') return hasVal && !hasErr;
+              return true;
+            })
+          );
+          if (matchingFields.length > 0 || matchingChildren.length > 0) {
+            return {
+              ...sf,
+              fields: matchingFields,
+              subforms: matchingChildren,
             };
           }
           return null;
@@ -540,6 +640,32 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
             </span>
           </button>
 
+          {/* Field Map & Dependency Graph Jump Button */}
+          {onSwitchToFieldMap && (
+            <button
+              onClick={onSwitchToFieldMap}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border border-indigo-700/60 bg-indigo-950/40 hover:bg-indigo-900/60 text-indigo-300 transition-colors shadow-xs"
+              title="Open Field Map to trace data flow and calculations between subforms"
+            >
+              <Network className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Field Map</span>
+            </button>
+          )}
+
+          {/* AI Smart Form Assistant Toggle Button */}
+          <button
+            onClick={() => setIsAssistantOpen(prev => !prev)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border transition-all ${
+              isAssistantOpen
+                ? 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-950/40'
+                : 'bg-purple-950/50 hover:bg-purple-900/60 text-purple-200 border-purple-700/60'
+            }`}
+            title="Smart Form Assistant: AI Autofill, Cross-field Inference, and Industry Profiles"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-300 animate-pulse" />
+            <span>AI Assistant</span>
+          </button>
+
           {/* Bulk Edit Toggle Button */}
           <button
             onClick={() => {
@@ -669,6 +795,30 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Smart Form Assistant (Gemini 3.8 Flash) Collapsible Drawer */}
+      {isAssistantOpen && (
+        <div className="bg-slate-900 border border-purple-500/40 rounded-xl overflow-hidden shadow-2xl animate-in slide-in-from-top-3 duration-200">
+          <div className="h-[640px]">
+            <SmartFormAssistant
+              fields={allFields}
+              subforms={subforms}
+              filename="XFA Document"
+              onApplyFieldSuggestion={(fieldId, val) => {
+                handleFieldChange(fieldId, val);
+                setValidationToast(`Updated field with AI suggestion`);
+                setTimeout(() => setValidationToast(null), 3000);
+              }}
+              onBulkApplySuggestions={(items) => {
+                items.forEach(item => handleFieldChange(item.fieldId, item.value));
+                setValidationToast(`Applied ${items.length} AI suggestions to form`);
+                setTimeout(() => setValidationToast(null), 3500);
+              }}
+              onClose={() => setIsAssistantOpen(false)}
+            />
+          </div>
         </div>
       )}
 
@@ -849,6 +999,178 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
         )}
       </div>
 
+      {/* Real-time Data Type Classification & Highlighting Toolbar */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+              <Palette className="w-4 h-4" />
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-100">
+                  Real-Time Field Types & Highlighting
+                </span>
+                <span className="text-[10px] text-slate-400">
+                  (Dates, Numeric Bounds, RFC Emails, Formats)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Live pattern validation and semantic color-coding based on XFA data bindings and constraints.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setHighlightByDataType(prev => !prev)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-lg border transition-all ${
+                highlightByDataType
+                  ? 'bg-indigo-600/20 text-indigo-300 border-indigo-500/50 shadow-xs'
+                  : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-slate-200'
+              }`}
+              title="Toggle semantic color coding and live input border highlights"
+            >
+              <Palette className="w-3.5 h-3.5 text-indigo-400" />
+              <span>{highlightByDataType ? 'Type Highlighting: ON' : 'Type Highlighting: OFF'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Semantic Data Type Filter Tabs */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-800/80 text-xs">
+          <span className="text-slate-400 text-[11px] font-medium mr-1 flex items-center gap-1">
+            <Tag className="w-3 h-3 text-slate-500" /> View by Type:
+          </span>
+
+          <button
+            onClick={() => setSelectedDataTypeFilter('all')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+              selectedDataTypeFilter === 'all'
+                ? 'bg-slate-700 text-white border-slate-600 shadow-xs'
+                : 'bg-slate-950/60 text-slate-300 border-slate-800 hover:bg-slate-800/80'
+            }`}
+          >
+            <span>All Fields</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 font-mono text-slate-300">
+              {totalFields}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSelectedDataTypeFilter('date')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+              selectedDataTypeFilter === 'date'
+                ? 'bg-indigo-600/30 text-indigo-200 border-indigo-500/60 shadow-xs'
+                : 'bg-slate-950/60 text-indigo-300/80 border-slate-800 hover:bg-slate-800/80'
+            }`}
+          >
+            <Calendar className="w-3 h-3 text-indigo-400" />
+            <span>Dates</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono">
+              {dataTypeCounts.dateCount}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSelectedDataTypeFilter('numeric')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+              selectedDataTypeFilter === 'numeric'
+                ? 'bg-amber-600/30 text-amber-200 border-amber-500/60 shadow-xs'
+                : 'bg-slate-950/60 text-amber-300/80 border-slate-800 hover:bg-slate-800/80'
+            }`}
+          >
+            <Hash className="w-3 h-3 text-amber-400" />
+            <span>Numeric & Bounds</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-950 text-amber-300 border border-amber-800 font-mono">
+              {dataTypeCounts.numericCount}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSelectedDataTypeFilter('email')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+              selectedDataTypeFilter === 'email'
+                ? 'bg-cyan-600/30 text-cyan-200 border-cyan-500/60 shadow-xs'
+                : 'bg-slate-950/60 text-cyan-300/80 border-slate-800 hover:bg-slate-800/80'
+            }`}
+          >
+            <Mail className="w-3 h-3 text-cyan-400" />
+            <span>Emails</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono">
+              {dataTypeCounts.emailCount}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSelectedDataTypeFilter('phone_postal')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+              selectedDataTypeFilter === 'phone_postal'
+                ? 'bg-teal-600/30 text-teal-200 border-teal-500/60 shadow-xs'
+                : 'bg-slate-950/60 text-teal-300/80 border-slate-800 hover:bg-slate-800/80'
+            }`}
+          >
+            <Phone className="w-3 h-3 text-teal-400" />
+            <span>Phone / Postal / BN</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-teal-950 text-teal-300 border border-teal-800 font-mono">
+              {dataTypeCounts.contactCount}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSelectedDataTypeFilter('valid')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+              selectedDataTypeFilter === 'valid'
+                ? 'bg-emerald-600/30 text-emerald-200 border-emerald-500/60 shadow-xs'
+                : 'bg-slate-950/60 text-emerald-300/80 border-slate-800 hover:bg-slate-800/80'
+            }`}
+          >
+            <CheckCheck className="w-3 h-3 text-emerald-400" />
+            <span>Compliant</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+              {dataTypeCounts.validCount}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSelectedDataTypeFilter('invalid')}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+              selectedDataTypeFilter === 'invalid'
+                ? 'bg-rose-600/30 text-rose-200 border-rose-500/60 shadow-xs'
+                : 'bg-slate-950/60 text-rose-300/80 border-slate-800 hover:bg-slate-800/80'
+            }`}
+          >
+            <AlertCircle className="w-3 h-3 text-rose-400" />
+            <span>Errors</span>
+            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-950 text-rose-300 border border-rose-800 font-mono">
+              {dataTypeCounts.invalidCount}
+            </span>
+          </button>
+        </div>
+
+        {/* Color Legend Bar */}
+        {highlightByDataType && (
+          <div className="flex flex-wrap items-center gap-3 pt-2 text-[10px] text-slate-400 font-mono border-t border-slate-800/50">
+            <span className="text-slate-500 font-sans font-medium">Highlight Legend:</span>
+            <span className="flex items-center gap-1 text-indigo-300">
+              <span className="w-2 h-2 rounded-full bg-indigo-500" /> Date (YYYY-MM-DD + calendar validation)
+            </span>
+            <span className="flex items-center gap-1 text-amber-300">
+              <span className="w-2 h-2 rounded-full bg-amber-500" /> Numeric (range bounds & currency)
+            </span>
+            <span className="flex items-center gap-1 text-cyan-300">
+              <span className="w-2 h-2 rounded-full bg-cyan-400" /> Email (RFC 5322 pattern)
+            </span>
+            <span className="flex items-center gap-1 text-teal-300">
+              <span className="w-2 h-2 rounded-full bg-teal-400" /> Phone / Canadian Postal / CRA BN
+            </span>
+            <span className="flex items-center gap-1 text-rose-300">
+              <span className="w-2 h-2 rounded-full bg-rose-500" /> Validation Error
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* Bulk Edit Dedicated Action & Selection Controls Bar */}
       {isBulkMode && (
         <div className="bg-sky-950/30 border border-sky-800/70 rounded-xl p-3.5 space-y-3 animate-in fade-in slide-in-from-top-1 duration-150">
@@ -967,6 +1289,7 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
             onToggleField={handleToggleField}
             onToggleSubform={handleToggleSubform}
             fieldErrorMap={validationReport.fieldErrorMap}
+            highlightByDataType={highlightByDataType}
           />
         ))}
 
@@ -1192,6 +1515,7 @@ interface SubformSectionProps {
   onToggleField: (fieldId: string) => void;
   onToggleSubform: (subform: XFASubform) => void;
   fieldErrorMap: Map<string, ValidationError[]>;
+  highlightByDataType?: boolean;
 }
 
 const SubformSection: React.FC<SubformSectionProps> = ({
@@ -1206,6 +1530,7 @@ const SubformSection: React.FC<SubformSectionProps> = ({
   onToggleField,
   onToggleSubform,
   fieldErrorMap,
+  highlightByDataType = true,
 }) => {
   // Compute subform selection state
   const subformFieldIds = useMemo(() => {
@@ -1312,6 +1637,7 @@ const SubformSection: React.FC<SubformSectionProps> = ({
                   isSelected={selectedFieldIds.has(field.id)}
                   onToggleSelect={() => onToggleField(field.id)}
                   issues={fieldErrorMap.get(field.id)}
+                  highlightByDataType={highlightByDataType}
                 />
               ))}
             </div>
@@ -1332,6 +1658,7 @@ const SubformSection: React.FC<SubformSectionProps> = ({
                 onToggleField={onToggleField}
                 onToggleSubform={onToggleSubform}
                 fieldErrorMap={fieldErrorMap}
+                highlightByDataType={highlightByDataType}
               />
             </div>
           ))}
@@ -1351,6 +1678,7 @@ interface FieldInputControlProps {
   isSelected: boolean;
   onToggleSelect: () => void;
   issues?: ValidationError[];
+  highlightByDataType?: boolean;
 }
 
 const FieldInputControl: React.FC<FieldInputControlProps> = ({
@@ -1363,10 +1691,15 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
   isSelected,
   onToggleSelect,
   issues = [],
+  highlightByDataType = true,
 }) => {
   const isFullWidth = field.type === 'multiline' || field.type === 'signature';
   const hasError = issues.some(i => i.severity === 'error');
   const hasWarning = !hasError && issues.some(i => i.severity === 'warning');
+
+  // Detect semantic data type and live validation state
+  const dataTypeInfo = detectFieldDataType(field);
+  const validationState = getFieldValidationState(field, issues);
 
   // Opacity when field is marked invisible or hidden in XFA
   const opacityClass =
@@ -1376,17 +1709,29 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
       ? 'opacity-75'
       : '';
 
-  const validationRingClass = hasError
+  // Determine card highlight class based on highlightByDataType setting
+  const activeCardClass = highlightByDataType
+    ? `${validationState.cardHighlightClass} ${dataTypeInfo.accentBorder}`
+    : hasError
     ? 'border-rose-500/80 bg-rose-950/20 ring-1 ring-rose-500/40'
     : hasWarning
     ? 'border-amber-500/80 bg-amber-950/20 ring-1 ring-amber-500/30'
     : 'border-slate-800/80 bg-slate-950/40';
 
-  const inputErrorClass = hasError
+  // Determine dynamic input border and focus ring class
+  const activeInputClass = highlightByDataType
+    ? validationState.inputBorderClass
+    : hasError
     ? 'border-rose-500/80 focus:border-rose-400 focus:ring-rose-500/40'
     : hasWarning
     ? 'border-amber-500/80 focus:border-amber-400 focus:ring-amber-500/40'
     : 'border-slate-800 focus:border-sky-500 focus:ring-sky-500';
+
+  const numVal = parseCurrencyOrNumber(field.value);
+  const isNumericType = dataTypeInfo.type === 'numeric';
+  const hasNumericBounds = isNumericType && (dataTypeInfo.min !== undefined || dataTypeInfo.max !== undefined);
+  const isUnderMin = isNumericType && dataTypeInfo.min !== undefined && numVal !== null && numVal < dataTypeInfo.min;
+  const isOverMax = isNumericType && dataTypeInfo.max !== undefined && numVal !== null && numVal > dataTypeInfo.max;
 
   return (
     <div
@@ -1397,12 +1742,12 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
           ? `cursor-pointer ${
               isSelected
                 ? 'bg-sky-950/40 border-sky-400 ring-2 ring-sky-500/50 shadow-sm'
-                : `${validationRingClass} hover:border-slate-700 hover:bg-slate-900/60`
+                : `${activeCardClass} hover:border-slate-700 hover:bg-slate-900/60`
             }`
-          : validationRingClass
+          : activeCardClass
       } ${opacityClass} ${isFullWidth ? 'md:col-span-2' : ''}`}
     >
-      {/* Label, Status Badges, and Bindings */}
+      {/* Label, Data Type Badges, Status Indicators, and Bindings */}
       <div className="flex items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 flex-wrap">
           {/* Bulk Checkbox */}
@@ -1427,14 +1772,54 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
           </label>
         </div>
 
-        {/* Status badges & Error Tag */}
+        {/* Semantic Data Type Badge & Live Validation Status */}
         <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+          {/* Real-time Data Type Badge */}
+          {highlightByDataType && (
+            <span
+              title={`${dataTypeInfo.description}${dataTypeInfo.expectedFormat ? ` (${dataTypeInfo.expectedFormat})` : ''}`}
+              className={`inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-md border font-medium transition-all ${dataTypeInfo.badgeClass}`}
+            >
+              {dataTypeInfo.type === 'date' ? (
+                <Calendar className="w-3 h-3 text-indigo-400" />
+              ) : dataTypeInfo.type === 'numeric' ? (
+                <Hash className="w-3 h-3 text-amber-400" />
+              ) : dataTypeInfo.type === 'email' ? (
+                <Mail className="w-3 h-3 text-cyan-400" />
+              ) : dataTypeInfo.type === 'phone' ? (
+                <Phone className="w-3 h-3 text-teal-400" />
+              ) : dataTypeInfo.type === 'postal_code' ? (
+                <MapPin className="w-3 h-3 text-teal-400" />
+              ) : dataTypeInfo.type === 'cra_bn' ? (
+                <Tag className="w-3 h-3 text-teal-400" />
+              ) : dataTypeInfo.type === 'check' ? (
+                <CheckSquare className="w-3 h-3 text-purple-400" />
+              ) : (
+                <Tag className="w-3 h-3 text-slate-400" />
+              )}
+              <span>{dataTypeInfo.shortTag}</span>
+            </span>
+          )}
+
+          {/* Live Validation Status Pill */}
+          {validationState.status === 'valid' && (
+            <span
+              title="Field input satisfies XFA data type constraints and calendar/pattern rules"
+              className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-emerald-950/80 text-emerald-300 border border-emerald-700/80 font-medium"
+            >
+              <CheckCheck className="w-3 h-3 text-emerald-400" />
+              <span>
+                Valid {dataTypeInfo.type === 'date' ? 'Date' : dataTypeInfo.type === 'email' ? 'Email' : dataTypeInfo.type === 'numeric' ? 'Range' : ''}
+              </span>
+            </span>
+          )}
+
           {hasError && (
             <span
               title="Field violates XFA validation rule or business logic constraint"
-              className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-rose-950/90 text-rose-300 border border-rose-800"
+              className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-rose-950/90 text-rose-300 border border-rose-800 font-bold"
             >
-              <AlertCircle className="w-2.5 h-2.5" />
+              <AlertCircle className="w-3 h-3 text-rose-400" />
               <span>Error</span>
             </span>
           )}
@@ -1442,17 +1827,17 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
           {hasWarning && (
             <span
               title="Field advisory check or formatting warning"
-              className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-950/90 text-amber-300 border border-amber-800"
+              className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-amber-950/90 text-amber-300 border border-amber-800 font-medium"
             >
-              <AlertTriangle className="w-2.5 h-2.5" />
-              <span>Warning</span>
+              <AlertTriangle className="w-3 h-3 text-amber-400" />
+              <span>Notice</span>
             </span>
           )}
 
           {field.readOnly && (
             <span
               title="Read-Only: value cannot be modified in PDF viewer"
-              className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-950/80 text-amber-300 border border-amber-800/80"
+              className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-300 border border-amber-800/80"
             >
               <Lock className="w-2.5 h-2.5" />
               <span>Read-Only</span>
@@ -1462,7 +1847,7 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
           {field.visibility === 'invisible' && (
             <span
               title="Invisible in XFA: takes up layout space but does not render content"
-              className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700"
+              className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700"
             >
               <EyeOff className="w-2.5 h-2.5" />
               <span>Invisible</span>
@@ -1472,7 +1857,7 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
           {field.visibility === 'hidden' && (
             <span
               title="Hidden in XFA: excluded from document layout and rendering"
-              className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.2 rounded bg-rose-950/80 text-rose-300 border border-rose-800/80"
+              className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-800/80"
             >
               <EyeOff className="w-2.5 h-2.5" />
               <span>Hidden</span>
@@ -1488,10 +1873,10 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
         </div>
       </div>
 
-      {/* Control Type Rendering */}
+      {/* Control Type Rendering with Live Validation Border Highlighting */}
       <div onClick={isBulkMode ? e => e.stopPropagation() : undefined}>
         {field.type === 'check' ? (
-          <label className={`flex items-center gap-2.5 p-2 bg-slate-900/60 border rounded-lg transition-colors ${inputErrorClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:border-slate-700'}`}>
+          <label className={`flex items-center gap-2.5 p-2 bg-slate-900/60 border rounded-lg transition-colors ${activeInputClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:border-slate-700'}`}>
             <input
               type="checkbox"
               disabled={field.readOnly}
@@ -1508,7 +1893,7 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
             value={field.value}
             disabled={field.readOnly}
             onChange={e => onChange(e.target.value)}
-            className={`w-full bg-slate-900/80 border rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 ${inputErrorClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
+            className={`w-full bg-slate-900/80 border rounded-lg px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 ${activeInputClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
           >
             <option value="">-- Select an option --</option>
             {field.options?.map((opt, i) => (
@@ -1529,29 +1914,29 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
             disabled={field.readOnly}
             onChange={e => onChange(e.target.value)}
             placeholder={field.readOnly ? '(Read-only field)' : 'Enter detailed notes or disclosures...'}
-            className={`w-full bg-slate-900/80 border rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 ${inputErrorClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
+            className={`w-full bg-slate-900/80 border rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 ${activeInputClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
           />
         ) : field.type === 'date' ? (
           <div className="relative">
-            <Calendar className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Calendar className="w-3.5 h-3.5 text-indigo-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="date"
               value={field.value}
               disabled={field.readOnly}
               onChange={e => onChange(e.target.value)}
-              className={`w-full bg-slate-900/80 border rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 ${inputErrorClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
+              className={`w-full bg-slate-900/80 border rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 ${activeInputClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
             />
           </div>
         ) : field.type === 'numeric' ? (
           <div className="relative">
-            <Hash className="w-3 h-3 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <Hash className="w-3 h-3 text-amber-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               value={field.value}
               disabled={field.readOnly}
               onChange={e => onChange(e.target.value)}
               placeholder="0.00"
-              className={`w-full bg-slate-900/80 border rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-100 font-mono tabular-nums focus:outline-none focus:ring-1 ${inputErrorClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
+              className={`w-full bg-slate-900/80 border rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-100 font-mono tabular-nums focus:outline-none focus:ring-1 ${activeInputClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
             />
           </div>
         ) : field.type === 'signature' ? (
@@ -1574,22 +1959,100 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
               disabled={field.readOnly}
               onChange={e => onChange(e.target.value)}
               placeholder={field.readOnly ? '(Read-only signature)' : 'Type legal signatory name...'}
-              className={`w-full bg-slate-950 border rounded-md px-3 py-1.5 text-xs font-serif text-sky-200 placeholder-slate-600 focus:outline-none ${inputErrorClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
+              className={`w-full bg-slate-950 border rounded-md px-3 py-1.5 text-xs font-serif text-sky-200 placeholder-slate-600 focus:outline-none ${activeInputClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
             />
           </div>
         ) : (
-          <input
-            type="text"
-            value={field.value}
-            disabled={field.readOnly}
-            onChange={e => onChange(e.target.value)}
-            placeholder={field.readOnly ? '(Read-only field)' : `Enter ${field.caption.toLowerCase()}...`}
-            className={`w-full bg-slate-900/80 border rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 ${inputErrorClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
-          />
+          <div className="relative">
+            {dataTypeInfo.type === 'email' ? (
+              <Mail className="w-3.5 h-3.5 text-cyan-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            ) : dataTypeInfo.type === 'phone' ? (
+              <Phone className="w-3.5 h-3.5 text-teal-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            ) : dataTypeInfo.type === 'postal_code' ? (
+              <MapPin className="w-3.5 h-3.5 text-teal-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            ) : null}
+            <input
+              type="text"
+              value={field.value}
+              disabled={field.readOnly}
+              onChange={e => onChange(e.target.value)}
+              placeholder={
+                field.readOnly
+                  ? '(Read-only field)'
+                  : dataTypeInfo.expectedFormat
+                  ? `e.g. ${dataTypeInfo.expectedFormat}`
+                  : `Enter ${field.caption.toLowerCase()}...`
+              }
+              className={`w-full bg-slate-900/80 border rounded-lg ${
+                dataTypeInfo.type === 'email' || dataTypeInfo.type === 'phone' || dataTypeInfo.type === 'postal_code'
+                  ? 'pl-9'
+                  : 'px-3'
+              } py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 ${activeInputClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
+            />
+          </div>
         )}
       </div>
 
-      {/* Direct Inline Error Banners */}
+      {/* Real-time Semantic Helpers & Range Bounds Meter */}
+      {highlightByDataType && (
+        <div className="mt-1.5 space-y-1">
+          {/* Numeric Bounds Meter */}
+          {hasNumericBounds && (
+            <div className="flex items-center justify-between text-[10px] font-mono px-1 py-0.5 rounded bg-slate-950/60 border border-amber-900/30 text-slate-400">
+              <span className="flex items-center gap-1 text-amber-300/90">
+                <Hash className="w-2.5 h-2.5" />
+                <span>
+                  Bounds: ${dataTypeInfo.min?.toLocaleString() ?? '0'} min
+                  {dataTypeInfo.max !== undefined ? ` — $${dataTypeInfo.max.toLocaleString()} max` : ' (no ceiling)'}
+                </span>
+              </span>
+              {numVal !== null && (
+                <span
+                  className={
+                    isUnderMin || isOverMax
+                      ? 'text-rose-400 font-bold'
+                      : 'text-emerald-400 font-medium'
+                  }
+                >
+                  {isUnderMin ? '⚠ Below minimum bound' : isOverMax ? '⚠ Exceeds maximum bound' : '✓ Within valid range'}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Date Calendar Format Helper */}
+          {dataTypeInfo.type === 'date' && (
+            <div className="flex items-center justify-between text-[10px] font-mono px-1 py-0.5 rounded bg-slate-950/60 border border-indigo-900/30 text-indigo-300/80">
+              <span className="flex items-center gap-1">
+                <Calendar className="w-2.5 h-2.5" />
+                <span>Pattern: YYYY-MM-DD (ISO 8601 calendar)</span>
+              </span>
+              {field.value && (
+                <span className={validationState.status === 'valid' ? 'text-emerald-400 font-medium' : 'text-rose-400'}>
+                  {validationState.status === 'valid' ? '✓ Day verified' : 'Check date'}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Email RFC Pattern Helper */}
+          {dataTypeInfo.type === 'email' && (
+            <div className="flex items-center justify-between text-[10px] font-mono px-1 py-0.5 rounded bg-slate-950/60 border border-cyan-900/30 text-cyan-300/80">
+              <span className="flex items-center gap-1">
+                <Mail className="w-2.5 h-2.5" />
+                <span>Pattern: recipient@domain.tld</span>
+              </span>
+              {field.value && (
+                <span className={validationState.status === 'valid' ? 'text-emerald-400 font-medium' : 'text-rose-400'}>
+                  {validationState.status === 'valid' ? '✓ RFC verified' : 'Check format'}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Direct Inline Error Banners with Auto-Fix Action */}
       {issues.length > 0 && (
         <div className="mt-2.5 space-y-1.5">
           {issues.map(issue => {
@@ -1650,3 +2113,4 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
     </div>
   );
 };
+

@@ -33,6 +33,9 @@ import { XFAField, XFAFieldAppearance, XFASubform } from '../types/pdf';
 import { XfaFieldOverlay } from './XfaFieldOverlay';
 import { FieldPropertiesInspector } from './FieldPropertiesInspector';
 import { QuickNavTree } from './QuickNavTree';
+import { FreehandDrawingLayer } from './FreehandDrawingLayer';
+import { DrawingToolbar } from './DrawingToolbar';
+import { DrawingStroke, PageAnnotations, DrawingSettings } from '../types/drawing';
 import { createSampleComparisonPdf } from '../utils/samplePdfs';
 import { extractXfaPackets, parseXfaTemplate } from '../utils/xfaEngine';
 import { PDFDocument } from 'pdf-lib';
@@ -120,6 +123,163 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [showInspector, setShowInspector] = useState(true);
   const [showQuickNav, setShowQuickNav] = useState(true);
+
+  // Freehand Drawing Layer & Annotation State
+  const [pageAnnotations, setPageAnnotations] = useState<PageAnnotations>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(`xfa_drawing_annotations_${filename}`);
+        if (stored) return JSON.parse(stored);
+      } catch (e) {
+        console.warn('Failed to parse saved annotations:', e);
+      }
+    }
+    return {};
+  });
+
+  const [isDrawingMode, setIsDrawingMode] = useState(false);
+  const [drawingSettings, setDrawingSettings] = useState<DrawingSettings>({
+    tool: 'pen',
+    color: '#1d4ed8', // Royal Signature Blue
+    width: 2,
+    opacity: 1.0,
+  });
+
+  const [annotationUndoStack, setAnnotationUndoStack] = useState<PageAnnotations[]>([]);
+  const [annotationRedoStack, setAnnotationRedoStack] = useState<PageAnnotations[]>([]);
+
+  // Persist annotations to localStorage per document
+  useEffect(() => {
+    try {
+      localStorage.setItem(`xfa_drawing_annotations_${filename}`, JSON.stringify(pageAnnotations));
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [pageAnnotations, filename]);
+
+  const handleStrokesChange = useCallback((page: number, newStrokes: DrawingStroke[]) => {
+    setPageAnnotations(prev => {
+      setAnnotationUndoStack(stack => [...stack.slice(-25), prev]);
+      setAnnotationRedoStack([]); // Clear redo on new stroke
+      return {
+        ...prev,
+        [page]: newStrokes,
+      };
+    });
+  }, []);
+
+  const handleUndoAnnotation = useCallback(() => {
+    setAnnotationUndoStack(undoStack => {
+      if (undoStack.length === 0) return undoStack;
+      const previousState = undoStack[undoStack.length - 1];
+      setAnnotationRedoStack(redoStack => [...redoStack, pageAnnotations]);
+      setPageAnnotations(previousState);
+      return undoStack.slice(0, -1);
+    });
+  }, [pageAnnotations]);
+
+  const handleRedoAnnotation = useCallback(() => {
+    setAnnotationRedoStack(redoStack => {
+      if (redoStack.length === 0) return redoStack;
+      const nextState = redoStack[redoStack.length - 1];
+      setAnnotationUndoStack(undoStack => [...undoStack, pageAnnotations]);
+      setPageAnnotations(nextState);
+      return redoStack.slice(0, -1);
+    });
+  }, [pageAnnotations]);
+
+  const handleClearPageStrokes = useCallback(() => {
+    if ((pageAnnotations[primaryPage] || []).length === 0) return;
+    setAnnotationUndoStack(stack => [...stack, pageAnnotations]);
+    setAnnotationRedoStack([]);
+    setPageAnnotations(prev => ({
+      ...prev,
+      [primaryPage]: [],
+    }));
+  }, [pageAnnotations, primaryPage]);
+
+  // Export current page drawing strokes as transparent PNG
+  const handleExportDrawingPng = useCallback(() => {
+    const currentStrokes = pageAnnotations[primaryPage] || [];
+    if (currentStrokes.length === 0) return;
+
+    const width = Math.round(primaryDims.origW * 2);
+    const height = Math.round(primaryDims.origH * 2);
+    const offscreen = document.createElement('canvas');
+    offscreen.width = width;
+    offscreen.height = height;
+    const ctx = offscreen.getContext('2d');
+    if (!ctx) return;
+
+    const scaleX = width / primaryDims.origW;
+    const scaleY = height / primaryDims.origH;
+
+    for (const stroke of currentStrokes) {
+      if (stroke.points.length === 0) continue;
+      ctx.save();
+      ctx.globalAlpha = stroke.opacity;
+      ctx.strokeStyle = stroke.color;
+      ctx.fillStyle = stroke.color;
+      ctx.lineWidth = Math.max(stroke.width * scaleX, 1);
+      ctx.lineCap = stroke.tool === 'highlighter' ? 'square' : 'round';
+      ctx.lineJoin = stroke.tool === 'highlighter' ? 'miter' : 'round';
+
+      if (stroke.points.length === 1) {
+        ctx.beginPath();
+        ctx.arc(stroke.points[0].x * scaleX, stroke.points[0].y * scaleY, ctx.lineWidth / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (stroke.points.length === 2) {
+        ctx.beginPath();
+        ctx.moveTo(stroke.points[0].x * scaleX, stroke.points[0].y * scaleY);
+        ctx.lineTo(stroke.points[1].x * scaleX, stroke.points[1].y * scaleY);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(stroke.points[0].x * scaleX, stroke.points[0].y * scaleY);
+        for (let i = 1; i < stroke.points.length - 1; i++) {
+          const midX = ((stroke.points[i].x + stroke.points[i + 1].x) / 2) * scaleX;
+          const midY = ((stroke.points[i].y + stroke.points[i + 1].y) / 2) * scaleY;
+          ctx.quadraticCurveTo(stroke.points[i].x * scaleX, stroke.points[i].y * scaleY, midX, midY);
+        }
+        const last = stroke.points[stroke.points.length - 1];
+        ctx.lineTo(last.x * scaleX, last.y * scaleY);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    offscreen.toBlob(blob => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${filename.replace(/\.pdf$/i, '')}_page${primaryPage}_signatures.png`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }, 'image/png');
+  }, [pageAnnotations, primaryPage, primaryDims, filename]);
+
+  const primaryPageStrokeCount = (pageAnnotations[primaryPage] || []).length;
+  const totalStrokeCount = Object.values(pageAnnotations).reduce((acc, list) => acc + list.length, 0);
+
+  // Keyboard shortcut: Alt+D to toggle freehand drawing mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl instanceof HTMLInputElement ||
+        activeEl instanceof HTMLTextAreaElement ||
+        activeEl instanceof HTMLSelectElement;
+      if (isInput) return;
+
+      if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        setIsDrawingMode(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Jump directly to an XFA form field from Quick Nav tree
   const handleJumpToField = useCallback((field: XFAField) => {
@@ -715,6 +875,23 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
         </div>
       </div>
 
+      {/* Freehand Drawing & Annotation Toolbar */}
+      <DrawingToolbar
+        isDrawingMode={isDrawingMode}
+        onToggleDrawingMode={() => setIsDrawingMode(prev => !prev)}
+        settings={drawingSettings}
+        onUpdateSettings={updates => setDrawingSettings(prev => ({ ...prev, ...updates }))}
+        canUndo={annotationUndoStack.length > 0}
+        canRedo={annotationRedoStack.length > 0}
+        onUndo={handleUndoAnnotation}
+        onRedo={handleRedoAnnotation}
+        onClearPageStrokes={handleClearPageStrokes}
+        pageStrokeCount={primaryPageStrokeCount}
+        totalStrokeCount={totalStrokeCount}
+        currentPage={primaryPage}
+        onExportDrawingPng={handleExportDrawingPng}
+      />
+
       {/* Comparison Difference Summary Bar (Visible only when comparing 2 PDFs) */}
       {viewMode === 'compare_pdfs' && (
         <div className="bg-slate-900/90 border border-slate-800 rounded-xl px-4 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
@@ -889,6 +1066,19 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
                   typeFilter={typeFilter}
                 />
               )}
+
+              {/* Freehand Drawing & Handwritten Signature Layer */}
+              <FreehandDrawingLayer
+                pageNumber={primaryPage}
+                canvasWidth={primaryDims.width}
+                canvasHeight={primaryDims.height}
+                pdfPageWidth={primaryDims.origW}
+                pdfPageHeight={primaryDims.origH}
+                strokes={pageAnnotations[primaryPage] || []}
+                onStrokesChange={handleStrokesChange}
+                isDrawingMode={isDrawingMode}
+                settings={drawingSettings}
+              />
             </div>
           </div>
         </div>
@@ -982,6 +1172,19 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
                     typeFilter={typeFilter}
                   />
                 )}
+
+                {/* Freehand Drawing & Signature Layer on Secondary Page */}
+                <FreehandDrawingLayer
+                  pageNumber={secondaryPage}
+                  canvasWidth={secondaryDims.width}
+                  canvasHeight={secondaryDims.height}
+                  pdfPageWidth={secondaryDims.origW}
+                  pdfPageHeight={secondaryDims.origH}
+                  strokes={pageAnnotations[secondaryPage] || []}
+                  onStrokesChange={handleStrokesChange}
+                  isDrawingMode={isDrawingMode}
+                  settings={drawingSettings}
+                />
               </div>
             </div>
           </div>

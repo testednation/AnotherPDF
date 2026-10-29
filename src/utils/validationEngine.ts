@@ -70,11 +70,387 @@ export function xfaPictureToRegex(picture: string): RegExp | null {
 /**
  * Standard Semantic Business Logic Patterns
  */
-const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
-const CANADIAN_POSTAL_REGEX = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
-const PHONE_REGEX = /^(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}$/;
-const FISCAL_YEAR_REGEX = /^\d{4}(-\d{2,4})?$/;
-const CBF_PROJECT_NO_REGEX = /^(CBF-)?[A-Za-z0-9\-_]{3,24}$/i;
+export const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+export const CANADIAN_POSTAL_REGEX = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
+export const PHONE_REGEX = /^(\+?1[-.\s]?)?(\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}$/;
+export const FISCAL_YEAR_REGEX = /^\d{4}(-\d{2,4})?$/;
+export const CBF_PROJECT_NO_REGEX = /^(CBF-)?[A-Za-z0-9\-_]{3,24}$/i;
+export const CRA_BN_REGEX = /^\d{9}$/;
+
+export type FieldDataType =
+  | 'date'
+  | 'numeric'
+  | 'email'
+  | 'phone'
+  | 'postal_code'
+  | 'cra_bn'
+  | 'fiscal_year'
+  | 'check'
+  | 'choice'
+  | 'signature'
+  | 'multiline'
+  | 'text';
+
+export interface FieldDataTypeInfo {
+  type: FieldDataType;
+  label: string;
+  description?: string;
+  shortTag: string;
+  badgeClass: string;
+  accentBorder: string;
+  expectedPattern?: string;
+  expectedFormat?: string;
+  exampleValue?: string;
+  minValue?: number;
+  maxValue?: number;
+  min?: number;
+  max?: number;
+  unit?: string;
+}
+
+/**
+ * Normalizes FieldDataTypeInfo to ensure convenient alias properties exist
+ */
+function normalizeDataTypeInfo(info: FieldDataTypeInfo): FieldDataTypeInfo {
+  return {
+    ...info,
+    description: info.description || info.label,
+    expectedFormat: info.expectedFormat || info.expectedPattern,
+    min: info.min !== undefined ? info.min : info.minValue,
+    max: info.max !== undefined ? info.max : info.maxValue,
+    minValue: info.minValue !== undefined ? info.minValue : info.min,
+    maxValue: info.maxValue !== undefined ? info.maxValue : info.max,
+  };
+}
+
+/**
+ * Detects the semantic data type and constraints of an XFA field
+ */
+export function detectFieldDataType(field: XFAField): FieldDataTypeInfo {
+  const raw = detectFieldDataTypeRaw(field);
+  return normalizeDataTypeInfo(raw);
+}
+
+function detectFieldDataTypeRaw(field: XFAField): FieldDataTypeInfo {
+  const name = field.name.toLowerCase();
+  const caption = (field.caption || '').toLowerCase();
+  const format = (field.format || '').toLowerCase();
+  const pic = (field.validation?.picturePattern || '').toLowerCase();
+
+  // 1. Calendar Date
+  if (
+    field.type === 'date' ||
+    pic.includes('date{') ||
+    format.includes('date') ||
+    name.includes('date') ||
+    caption.includes('date') ||
+    name.includes('period_end') ||
+    name.includes('period_start')
+  ) {
+    return {
+      type: 'date',
+      label: 'Calendar Date',
+      shortTag: 'Date',
+      badgeClass: 'bg-indigo-950/80 text-indigo-300 border-indigo-800/80',
+      accentBorder: 'border-indigo-500/70',
+      expectedPattern: field.validation?.picturePattern || 'YYYY-MM-DD',
+      exampleValue: '2025-03-31',
+    };
+  }
+
+  // 2. Email Address
+  if (name.includes('email') || caption.includes('email') || format === 'email') {
+    return {
+      type: 'email',
+      label: 'Email Address',
+      shortTag: 'Email',
+      badgeClass: 'bg-cyan-950/80 text-cyan-300 border-cyan-800/80',
+      accentBorder: 'border-cyan-500/70',
+      expectedPattern: 'user@domain.com',
+      exampleValue: 'contact@publisher.ca',
+    };
+  }
+
+  // 3. Telephone Number
+  if (name.includes('phone') || caption.includes('phone') || name.includes('telephone') || caption.includes('telephone')) {
+    return {
+      type: 'phone',
+      label: 'Telephone Number',
+      shortTag: 'Phone',
+      badgeClass: 'bg-teal-950/80 text-teal-300 border-teal-800/80',
+      accentBorder: 'border-teal-500/70',
+      expectedPattern: '(XXX) XXX-XXXX',
+      exampleValue: '(613) 555-0199',
+    };
+  }
+
+  // 4. Canadian Postal Code
+  if (name.includes('postal') || caption.includes('postal') || name.includes('postcode') || caption.includes('zip')) {
+    return {
+      type: 'postal_code',
+      label: 'Canadian Postal Code',
+      shortTag: 'Postal',
+      badgeClass: 'bg-sky-950/80 text-sky-300 border-sky-800/80',
+      accentBorder: 'border-sky-500/70',
+      expectedPattern: 'A1A 1A1',
+      exampleValue: 'K1A 0B4',
+    };
+  }
+
+  // 5. CRA Business Number
+  if (name.includes('business_number') || name.includes('bus_num') || name.includes('businessnumber') || caption.includes('business number') || name.includes('cra_bn')) {
+    return {
+      type: 'cra_bn',
+      label: 'CRA Business Number',
+      shortTag: 'CRA BN',
+      badgeClass: 'bg-violet-950/80 text-violet-300 border-violet-800/80',
+      accentBorder: 'border-violet-500/70',
+      expectedPattern: '9-digit number',
+      exampleValue: '123456789',
+    };
+  }
+
+  // 6. Fiscal Year
+  if (name.includes('fiscal') || caption.includes('fiscal')) {
+    return {
+      type: 'fiscal_year',
+      label: 'Fiscal Year',
+      shortTag: 'Fiscal',
+      badgeClass: 'bg-fuchsia-950/80 text-fuchsia-300 border-fuchsia-800/80',
+      accentBorder: 'border-fuchsia-500/70',
+      expectedPattern: 'YYYY-YYYY',
+      exampleValue: '2024-2025',
+    };
+  }
+
+  // 7. Checkbox
+  if (field.type === 'check') {
+    return {
+      type: 'check',
+      label: 'Affirmation Checkbox',
+      shortTag: 'Check',
+      badgeClass: 'bg-emerald-950/80 text-emerald-300 border-emerald-800/80',
+      accentBorder: 'border-emerald-500/70',
+      expectedPattern: '1 or 0',
+      exampleValue: '1',
+    };
+  }
+
+  // 8. Choice / Dropdown
+  if (field.type === 'choice') {
+    return {
+      type: 'choice',
+      label: 'Dropdown Selection',
+      shortTag: 'Choice',
+      badgeClass: 'bg-purple-950/80 text-purple-300 border-purple-800/80',
+      accentBorder: 'border-purple-500/70',
+    };
+  }
+
+  // 9. Digital Signature
+  if (field.type === 'signature' || name.includes('sign') || caption.includes('sign') || name.includes('witness')) {
+    return {
+      type: 'signature',
+      label: 'Digital Legal Signature',
+      shortTag: 'Signature',
+      badgeClass: 'bg-rose-950/80 text-rose-300 border-rose-800/80',
+      accentBorder: 'border-rose-500/70',
+      exampleValue: 'Jane Doe, Executive Director',
+    };
+  }
+
+  // 10. Numeric Range / Currency
+  if (
+    field.type === 'numeric' ||
+    pic.includes('num{') ||
+    name.includes('amount') ||
+    name.includes('revenue') ||
+    caption.includes('revenue') ||
+    name.includes('expenditure') ||
+    caption.includes('expenditure') ||
+    name.includes('cost') ||
+    name.includes('fee') ||
+    name.includes('salary') ||
+    name.includes('sales') ||
+    name.includes('grant') ||
+    name.includes('contribution') ||
+    name.includes('balance') ||
+    name.includes('variance')
+  ) {
+    const isPercent = name.includes('percent') || caption.includes('%') || format.includes('percent');
+    const min = field.validation?.minValue ?? (name.includes('variance') || name.includes('balance') ? undefined : 0);
+    const max = field.validation?.maxValue ?? (isPercent ? 100 : undefined);
+    return {
+      type: 'numeric',
+      label: isPercent ? 'Percentage (0-100%)' : 'Numeric Range / CAD $',
+      shortTag: isPercent ? 'Percent' : 'Numeric Range',
+      badgeClass: 'bg-amber-950/80 text-amber-300 border-amber-800/80',
+      accentBorder: 'border-amber-500/70',
+      expectedPattern: isPercent ? '0% - 100%' : field.validation?.picturePattern || 'num{$ZZZ,ZZ9.99}',
+      exampleValue: isPercent ? '75%' : '$25,000.00',
+      minValue: min,
+      maxValue: max,
+      unit: isPercent ? '%' : '$ CAD',
+    };
+  }
+
+  // 11. Multi-line Notes
+  if (field.type === 'multiline') {
+    return {
+      type: 'multiline',
+      label: 'Multi-line Text',
+      shortTag: 'Notes',
+      badgeClass: 'bg-slate-800 text-slate-300 border-slate-700',
+      accentBorder: 'border-slate-600',
+    };
+  }
+
+  // 12. Standard Text
+  return {
+    type: 'text',
+    label: 'Alphanumeric Text',
+    shortTag: 'Text',
+    badgeClass: 'bg-slate-800/90 text-slate-300 border-slate-700/80',
+    accentBorder: 'border-slate-700',
+  };
+}
+
+/**
+ * Validates calendar date structure and real month/day boundaries
+ */
+export function isValidCalendarDate(val: string): { valid: boolean; message?: string } {
+  const trimmed = val.trim();
+  const isoMatch = trimmed.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  const usSlashMatch = trimmed.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+
+  let y = 0, m = 0, d = 0;
+  if (isoMatch) {
+    y = parseInt(isoMatch[1], 10);
+    m = parseInt(isoMatch[2], 10);
+    d = parseInt(isoMatch[3], 10);
+  } else if (usSlashMatch) {
+    const first = parseInt(usSlashMatch[1], 10);
+    const second = parseInt(usSlashMatch[2], 10);
+    y = parseInt(usSlashMatch[3], 10);
+    if (first > 12 && second <= 12) {
+      d = first;
+      m = second;
+    } else {
+      m = first;
+      d = second;
+    }
+  } else {
+    return { valid: false, message: 'Date format must be YYYY-MM-DD or MM/DD/YYYY.' };
+  }
+
+  if (m < 1 || m > 12) {
+    return { valid: false, message: `Invalid month (${m}). Month must be between 01 and 12.` };
+  }
+  if (y < 1900 || y > 2100) {
+    return { valid: false, message: `Year (${y}) is outside valid historical/fiscal range (1900-2100).` };
+  }
+
+  const daysInMonth = new Date(y, m, 0).getDate();
+  if (d < 1 || d > daysInMonth) {
+    return { valid: false, message: `Invalid day (${d}) for month ${m}/${y}. Month only has ${daysInMonth} days.` };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Detailed diagnostics for email address formatting
+ */
+export function validateEmailDetailed(val: string): { valid: boolean; message?: string } {
+  const trimmed = val.trim();
+  if (!trimmed.includes('@')) {
+    return { valid: false, message: 'Email address is missing an "@" symbol.' };
+  }
+  const parts = trimmed.split('@');
+  if (parts.length > 2) {
+    return { valid: false, message: 'Email cannot contain multiple "@" symbols.' };
+  }
+  if (!parts[0]) {
+    return { valid: false, message: 'Email username prefix before "@" cannot be empty.' };
+  }
+  if (!parts[1] || !parts[1].includes('.')) {
+    return { valid: false, message: 'Email domain must contain a valid top-level domain (e.g. .ca, .com).' };
+  }
+  if (!EMAIL_REGEX.test(trimmed)) {
+    return { valid: false, message: 'Email contains invalid characters or malformed domain structure.' };
+  }
+  return { valid: true };
+}
+
+export interface FieldValidationState {
+  status: 'valid' | 'invalid' | 'warning' | 'empty_required' | 'empty_optional';
+  statusLabel: string;
+  statusBadgeClass: string;
+  inputBorderClass: string;
+  cardHighlightClass: string;
+  primaryIssue?: ValidationError;
+}
+
+/**
+ * Returns the live real-time validation state and color highlights for an XFA field
+ */
+export function getFieldValidationState(field: XFAField, issues: ValidationError[] = []): FieldValidationState {
+  const val = field.value !== undefined && field.value !== null ? String(field.value).trim() : '';
+  const isRequired = field.required || field.validation?.nullTest === 'error';
+  const hasError = issues.some(i => i.severity === 'error');
+  const hasWarning = !hasError && issues.some(i => i.severity === 'warning');
+  const primaryError = issues.find(i => i.severity === 'error') || issues[0];
+
+  if (!val) {
+    if (isRequired) {
+      return {
+        status: 'empty_required',
+        statusLabel: 'Required Missing',
+        statusBadgeClass: 'bg-rose-950/80 text-rose-300 border-rose-800',
+        inputBorderClass: 'border-rose-500/80 focus:border-rose-400 focus:ring-rose-500/40',
+        cardHighlightClass: 'border-rose-500/60 bg-rose-950/15 ring-1 ring-rose-500/30',
+        primaryIssue: primaryError,
+      };
+    }
+    return {
+      status: 'empty_optional',
+      statusLabel: 'Optional',
+      statusBadgeClass: 'bg-slate-800 text-slate-400 border-slate-700',
+      inputBorderClass: 'border-slate-800 focus:border-sky-500 focus:ring-sky-500',
+      cardHighlightClass: 'border-slate-800/80 bg-slate-950/40',
+    };
+  }
+
+  if (hasError) {
+    return {
+      status: 'invalid',
+      statusLabel: 'Format Error',
+      statusBadgeClass: 'bg-rose-950 text-rose-300 border-rose-700',
+      inputBorderClass: 'border-rose-500 bg-rose-950/20 text-rose-100 focus:border-rose-400 focus:ring-rose-500/50',
+      cardHighlightClass: 'border-rose-500/80 bg-rose-950/25 ring-1 ring-rose-500/40 shadow-sm',
+      primaryIssue: primaryError,
+    };
+  }
+
+  if (hasWarning) {
+    return {
+      status: 'warning',
+      statusLabel: 'Format Warning',
+      statusBadgeClass: 'bg-amber-950 text-amber-300 border-amber-700',
+      inputBorderClass: 'border-amber-500/80 bg-amber-950/20 text-amber-100 focus:border-amber-400 focus:ring-amber-500/40',
+      cardHighlightClass: 'border-amber-500/80 bg-amber-950/20 ring-1 ring-amber-500/30',
+      primaryIssue: primaryError,
+    };
+  }
+
+  return {
+    status: 'valid',
+    statusLabel: 'Valid Format',
+    statusBadgeClass: 'bg-emerald-950/80 text-emerald-300 border-emerald-800',
+    inputBorderClass: 'border-emerald-600/70 focus:border-emerald-400 focus:ring-emerald-500/30',
+    cardHighlightClass: 'border-emerald-500/40 bg-emerald-950/10 ring-1 ring-emerald-500/20',
+  };
+}
 
 /**
  * Parses numeric currency strings like "$125,000.00" or "(500.00)" into raw floats
@@ -229,7 +605,8 @@ export function validateField(
 
   // 5. Semantic Field Intelligence: Email check
   if (nameLower.includes('email') || captionLower.includes('email') || field.format === 'email') {
-    if (!EMAIL_REGEX.test(val)) {
+    const emailResult = validateEmailDetailed(val);
+    if (!emailResult.valid) {
       errors.push({
         id: `${field.id}_email`,
         fieldId: field.id,
@@ -238,7 +615,7 @@ export function validateField(
         subformName: field.parentSubform,
         severity: 'error',
         ruleType: 'email',
-        message: `Please enter a valid email address (e.g., user@example.ca).`,
+        message: emailResult.message || `Please enter a valid email address (e.g., user@example.ca).`,
         ruleDescription: 'Standard RFC-compliant email address',
         expectedPattern: 'user@domain.com',
         actualValue: val,
@@ -322,12 +699,10 @@ export function validateField(
     }
   }
 
-  // 10. Date Format Check
-  if (field.type === 'date' || nameLower.includes('date') || captionLower.includes('date')) {
-    const isIsoDate = /^\d{4}-\d{2}-\d{2}$/.test(val);
-    const isSlashDate = /^\d{2}\/\d{2}\/\d{4}$/.test(val);
-    const parsedDate = Date.parse(val);
-    if (!isIsoDate && !isSlashDate && isNaN(parsedDate)) {
+  // 10. Date Format & Calendar Validity Check
+  if (field.type === 'date' || nameLower.includes('date') || captionLower.includes('date') || field.validation?.picturePattern?.includes('date{')) {
+    const dateResult = isValidCalendarDate(val);
+    if (!dateResult.valid) {
       errors.push({
         id: `${field.id}_date_format`,
         fieldId: field.id,
@@ -336,9 +711,29 @@ export function validateField(
         subformName: field.parentSubform,
         severity: 'error',
         ruleType: 'picture_pattern',
-        message: `Please enter a valid calendar date (YYYY-MM-DD or MM/DD/YYYY).`,
+        message: dateResult.message || `Please enter a valid calendar date (YYYY-MM-DD or MM/DD/YYYY).`,
         ruleDescription: 'Calendar date validation',
         expectedPattern: 'YYYY-MM-DD',
+        actualValue: val,
+      });
+    }
+  }
+
+  // 10b. CRA Business Number Check
+  if (nameLower.includes('business_number') || nameLower.includes('bus_num') || nameLower.includes('businessnumber') || captionLower.includes('business number') || nameLower.includes('cra_bn')) {
+    const digits = val.replace(/\D/g, '');
+    if (digits.length !== 9) {
+      errors.push({
+        id: `${field.id}_cra_bn`,
+        fieldId: field.id,
+        fieldName: field.name,
+        fieldCaption: field.caption,
+        subformName: field.parentSubform,
+        severity: 'error',
+        ruleType: 'custom_logic',
+        message: `CRA Business Number must be exactly 9 numeric digits (entered: ${digits.length}).`,
+        ruleDescription: 'Canada Revenue Agency 9-Digit Business Number',
+        expectedPattern: '123456789',
         actualValue: val,
       });
     }
@@ -634,6 +1029,69 @@ export function quickFixFieldValue(field: XFAField, error: ValidationError): str
     }
     if (digits.length === 8) {
       return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+    }
+  }
+
+  // CRA Business Number quick-fix
+  if (error.id.includes('cra_bn') || field.name.toLowerCase().includes('cra') || field.name.toLowerCase().includes('bus_num')) {
+    const digits = val.replace(/\D/g, '');
+    if (digits.length === 9) {
+      return digits;
+    }
+  }
+
+  // Calendar Date Standardizer (to ISO YYYY-MM-DD)
+  if (error.id.includes('date') || error.ruleType === 'picture_pattern' && field.type === 'date') {
+    const isoSlashMatch = val.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+    if (isoSlashMatch) {
+      const y = isoSlashMatch[1];
+      const m = isoSlashMatch[2].padStart(2, '0');
+      const d = isoSlashMatch[3].padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    const usMatch = val.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+    if (usMatch) {
+      const first = parseInt(usMatch[1], 10);
+      const second = parseInt(usMatch[2], 10);
+      const y = usMatch[3];
+      let m = first;
+      let d = second;
+      if (first > 12 && second <= 12) {
+        d = first;
+        m = second;
+      }
+      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+    const contiguous = val.replace(/\D/g, '');
+    if (contiguous.length === 8) {
+      const y = contiguous.slice(0, 4);
+      const m = contiguous.slice(4, 6);
+      const d = contiguous.slice(6, 8);
+      if (parseInt(y, 10) >= 1900 && parseInt(m, 10) <= 12 && parseInt(d, 10) <= 31) {
+        return `${y}-${m}-${d}`;
+      }
+    }
+  }
+
+  // Email Quick Fix: trim spaces & lowercase
+  if (error.ruleType === 'email') {
+    const trimmed = val.trim().toLowerCase().replace(/\s+/g, '');
+    if (EMAIL_REGEX.test(trimmed)) {
+      return trimmed;
+    }
+  }
+
+  // Numeric Range Clamping & Symbol Cleanup
+  if (error.ruleType === 'range' || field.type === 'numeric') {
+    const num = parseCurrencyOrNumber(val);
+    if (!isNaN(num)) {
+      if (field.validation?.minValue !== undefined && num < field.validation.minValue) {
+        return String(field.validation.minValue);
+      }
+      if (field.validation?.maxValue !== undefined && num > field.validation.maxValue) {
+        return String(field.validation.maxValue);
+      }
+      return String(num);
     }
   }
 
