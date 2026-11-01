@@ -16,6 +16,10 @@ import {
   File,
   CheckCircle2,
   ArrowRight,
+  Scan,
+  FileCheck,
+  Smartphone,
+  Monitor,
 } from 'lucide-react';
 import {
   XFAField,
@@ -24,6 +28,7 @@ import {
   ExtractedTextPage,
   ExtractedResourceManifest,
 } from '../types/pdf';
+import { PageAnnotations } from '../types/drawing';
 import {
   ConversionOptions,
   ConversionParams,
@@ -37,26 +42,38 @@ import {
   generateAllConvertedBundleZip,
 } from '../utils/offlineConverters';
 import { downloadResource } from '../utils/resourceExtractor';
+import { RegularPdfConvertModal } from './RegularPdfConvertModal';
+import { FieldDetectionModal } from './FieldDetectionModal';
 
 interface ConversionViewProps {
   filename: string;
+  pdfBytes?: Uint8Array | null;
   metadata?: PdfDocumentMetadata | null;
   fields: XFAField[];
   subforms: XFASubform[];
   textPages: ExtractedTextPage[];
   manifest?: ExtractedResourceManifest | null;
+  pageAnnotations?: PageAnnotations;
+  onOpenFieldDetection?: () => void;
+  onOpenConvertRegularPdf?: () => void;
   onShowToast?: (msg: string) => void;
 }
 
 export const ConversionView: React.FC<ConversionViewProps> = ({
   filename,
+  pdfBytes,
   metadata,
   fields,
   subforms,
   textPages,
   manifest,
+  pageAnnotations = {},
+  onOpenFieldDetection,
+  onOpenConvertRegularPdf,
   onShowToast,
 }) => {
+  const [isConvertRegularModalOpen, setIsConvertRegularModalOpen] = useState(false);
+  const [isFieldDetectModalOpen, setIsFieldDetectModalOpen] = useState(false);
   // Conversion configuration
   const [options, setOptions] = useState<ConversionOptions>({
     includeMetadata: true,
@@ -184,7 +201,7 @@ export const ConversionView: React.FC<ConversionViewProps> = ({
     setCopiedFormat(formatKey);
     notify(`Copied ${label} to clipboard`);
     setTimeout(() => {
-      setCopiedFormat(curr => (curr === formatKey ? null : curr));
+      setCopiedFormat((curr: string | null) => (curr === formatKey ? null : curr));
     }, 2000);
   };
 
@@ -221,6 +238,82 @@ export const ConversionView: React.FC<ConversionViewProps> = ({
           <FolderArchive className="w-4 h-4" />
           <span>{isExportingAllZip ? 'Packaging Formats...' : 'Export All Formats in ZIP'}</span>
         </button>
+      </div>
+
+      {/* FEATURED: Convert XFA to Universal Regular PDF & Field Detection Banner */}
+      <div className="bg-gradient-to-r from-red-950/40 via-slate-900 to-sky-950/40 border border-red-500/30 rounded-xl p-5 shadow-lg relative overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
+          <div className="space-y-2 max-w-2xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-500/20 text-red-300 border border-red-500/30">
+                <FileCheck className="w-3.5 h-3.5" />
+                <span>Convert XFA to Regular PDF</span>
+              </span>
+              <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-full">
+                ISO 32000-1 Universal Standard
+              </span>
+              <span className="text-[11px] font-mono text-sky-400 bg-sky-950/60 border border-sky-800/60 px-2 py-0.5 rounded-full">
+                Bypasses "Please wait..." Barrier
+              </span>
+            </div>
+
+            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+              <span>Universal Standard PDF Conversion &amp; Field Recognition</span>
+            </h2>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Adobe LiveCycle Dynamic XFA forms cannot be viewed in standard PDF viewers (Chrome, Safari, Edge, Firefox, iOS, Android, and macOS Preview).
+              Convert your form into a universal <strong className="text-white">Interactive Standard AcroForm PDF</strong> with fillable fields, or a <strong className="text-white">Certified Flattened PDF</strong> with all values, barcodes, and handwritten signatures burned in.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-4 pt-1 text-[11px] text-slate-400 font-mono">
+              <div className="flex items-center gap-1.5">
+                <Smartphone className="w-3.5 h-3.5 text-sky-400" />
+                <span>Mobile &amp; Web Compatible</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Monitor className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Zero Adobe Software Required</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                <span>100% Private Offline Processing</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 shrink-0">
+            <button
+              onClick={() => {
+                if (onOpenConvertRegularPdf) {
+                  onOpenConvertRegularPdf();
+                } else {
+                  setIsConvertRegularModalOpen(true);
+                }
+              }}
+              disabled={!pdfBytes}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 active:bg-red-700 rounded-lg transition-all shadow-md hover:shadow-red-950/50 cursor-pointer disabled:opacity-50"
+            >
+              <FileCheck className="w-4 h-4" />
+              <span>Convert to Regular PDF</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (onOpenFieldDetection) {
+                  onOpenFieldDetection();
+                } else {
+                  setIsFieldDetectModalOpen(true);
+                }
+              }}
+              disabled={!pdfBytes}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg transition-all cursor-pointer disabled:opacity-50"
+            >
+              <Scan className="w-4 h-4 text-sky-400" />
+              <span>Scan &amp; Detect Fields</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Conversion Settings & Configuration Accordion/Panel */}
@@ -312,6 +405,67 @@ export const ConversionView: React.FC<ConversionViewProps> = ({
 
       {/* Target Formats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* CARD 0: UNIVERSAL REGULAR PDF (ISO 32000-1) */}
+        <div className="bg-slate-900 border-2 border-red-500/40 hover:border-red-500/70 rounded-xl p-5 flex flex-col justify-between space-y-4 transition-all relative overflow-hidden shadow-md">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400">
+                <FileCheck className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] font-mono font-semibold uppercase px-2 py-0.5 rounded bg-red-950/80 border border-red-800 text-red-300">
+                Universal PDF
+              </span>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-1.5">
+                <span>Universal Regular PDF</span>
+                <span className="text-red-400 font-mono text-xs">(.pdf)</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                Standard ISO 32000-1 PDF without LiveCycle XFA restriction. Choose between Interactive AcroForm (standard fillable) or Flattened archival PDF.
+              </p>
+            </div>
+
+            <div className="text-[11px] text-slate-500 font-mono space-y-0.5">
+              <div>· Strips LiveCycle /XFA restriction</div>
+              <div>· Preserves handwritten notes &amp; signatures</div>
+              <div>· 150 DPI balanced or 300 DPI print quality</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 pt-2 border-t border-slate-800/80">
+            <button
+              onClick={() => {
+                if (onOpenFieldDetection) {
+                  onOpenFieldDetection();
+                } else {
+                  setIsFieldDetectModalOpen(true);
+                }
+              }}
+              disabled={!pdfBytes}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Scan className="w-3.5 h-3.5 text-sky-400" />
+              <span>Detect</span>
+            </button>
+            <button
+              onClick={() => {
+                if (onOpenConvertRegularPdf) {
+                  onOpenConvertRegularPdf();
+                } else {
+                  setIsConvertRegularModalOpen(true);
+                }
+              }}
+              disabled={!pdfBytes}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Convert PDF</span>
+            </button>
+          </div>
+        </div>
+
         {/* CARD 1: MICROSOFT WORD (.DOCX) */}
         <div className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-5 flex flex-col justify-between space-y-4 transition-all">
           <div className="space-y-3">
@@ -771,6 +925,33 @@ export const ConversionView: React.FC<ConversionViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Convert XFA to Universal Regular PDF Modal */}
+      {pdfBytes && (
+        <RegularPdfConvertModal
+          isOpen={isConvertRegularModalOpen}
+          onClose={() => setIsConvertRegularModalOpen(false)}
+          pdfBytes={pdfBytes}
+          filename={filename}
+          fields={fields}
+          pageAnnotations={pageAnnotations}
+          onShowToast={notify}
+        />
+      )}
+
+      {/* Multi-tier Form Field Detection & Recognition Modal */}
+      {pdfBytes && (
+        <FieldDetectionModal
+          isOpen={isFieldDetectModalOpen}
+          onClose={() => setIsFieldDetectModalOpen(false)}
+          pdfBytes={pdfBytes}
+          currentFields={fields}
+          onOpenConvertRegularPdf={() => {
+            setIsFieldDetectModalOpen(false);
+            setIsConvertRegularModalOpen(true);
+          }}
+        />
       )}
     </div>
   );

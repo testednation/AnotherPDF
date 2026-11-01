@@ -271,7 +271,16 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                   <span>Open from Web URL...</span>
                   <span className="text-[10px] font-mono text-slate-500">URL</span>
                 </button>
-                <div className="h-px bg-[#3e3e3e] my-1" />
+                <button
+                  onClick={() => {
+                    setRightTool('convert');
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-1.5 hover:bg-[#3a3a3a] text-red-400 flex items-center justify-between"
+                >
+                  <span>Convert to Regular PDF...</span>
+                  <span className="text-[10px] font-mono text-red-400">ISO</span>
+                </button>
                 <button
                   onClick={() => {
                     onExportPdf();
@@ -611,6 +620,16 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
           >
             <Edit3 className="w-3.5 h-3.5 text-sky-400" />
             <span>Fill &amp; Sign</span>
+          </button>
+
+          {/* Convert XFA to Regular PDF Quick Action */}
+          <button
+            onClick={() => setRightTool('convert')}
+            className="px-2.5 py-1 rounded bg-red-600/80 hover:bg-red-500 text-white flex items-center gap-1.5 text-xs transition-colors shadow-xs"
+            title="Convert XFA to Standard Universal Regular PDF (ISO 32000-1)"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>Regular PDF</span>
           </button>
 
           <button
@@ -1084,6 +1103,7 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
               {rightTool === 'convert' && (
                 <ConversionView
                   filename={filename}
+                  pdfBytes={pdfBytes}
                   metadata={manifest?.metadata || null}
                   fields={fields}
                   subforms={subforms}

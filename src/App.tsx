@@ -884,6 +884,7 @@ export default function App() {
             {activeTab === 'convert' && (
               <ConversionView
                 filename={filename}
+                pdfBytes={pdfBytes}
                 metadata={manifest?.metadata || null}
                 fields={allFields}
                 subforms={subforms}

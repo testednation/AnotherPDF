@@ -27,6 +27,7 @@ import {
   X,
   FileCheck,
   FolderTree,
+  Scan,
 } from 'lucide-react';
 import { pdfjsLib } from '../utils/pdfWorker';
 import { XFAField, XFAFieldAppearance, XFASubform } from '../types/pdf';
@@ -39,6 +40,8 @@ import { DrawingStroke, PageAnnotations, DrawingSettings } from '../types/drawin
 import { createSampleComparisonPdf } from '../utils/samplePdfs';
 import { extractXfaPackets, parseXfaTemplate } from '../utils/xfaEngine';
 import { PDFDocument } from 'pdf-lib';
+import { FieldDetectionModal } from './FieldDetectionModal';
+import { RegularPdfConvertModal } from './RegularPdfConvertModal';
 
 export type CanvasViewMode = 'single' | 'two_pages' | 'compare_pdfs';
 
@@ -123,6 +126,8 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
   const [showInspector, setShowInspector] = useState(true);
   const [showQuickNav, setShowQuickNav] = useState(true);
+  const [isFieldDetectionOpen, setIsFieldDetectionOpen] = useState(false);
+  const [isConvertRegularPdfOpen, setIsConvertRegularPdfOpen] = useState(false);
 
   // Freehand Drawing Layer & Annotation State
   const [pageAnnotations, setPageAnnotations] = useState<PageAnnotations>(() => {
@@ -667,7 +672,23 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
               Click any field to inspect its geometry, coordinates, XML bindings, or customize its appearance without flattening.
             </div>
           </div>
-          <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
+          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto shrink-0">
+            <button
+              onClick={() => setIsFieldDetectionOpen(true)}
+              className="px-2.5 py-1 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Run multi-tier field recognition across all document pages"
+            >
+              <Scan className="w-3.5 h-3.5 text-sky-400" />
+              <span>Detect Fields</span>
+            </button>
+            <button
+              onClick={() => setIsConvertRegularPdfOpen(true)}
+              className="px-2.5 py-1 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="Convert dynamic XFA to regular ISO 32000-1 PDF (AcroForm or Flattened)"
+            >
+              <FileCheck className="w-3.5 h-3.5" />
+              <span>Convert to Regular PDF</span>
+            </button>
             <button
               onClick={onSwitchToResources}
               className="px-2.5 py-1 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
@@ -857,6 +878,26 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
               <Maximize2 className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {/* Form Field Auto-Detection */}
+          <button
+            onClick={() => setIsFieldDetectionOpen(true)}
+            className="px-2.5 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer bg-slate-800 border-slate-700 hover:border-sky-500/60 text-slate-300 hover:text-white"
+            title="Scan and detect all form fields across pages (XFA, AcroForm & Heuristics)"
+          >
+            <Scan className="w-3.5 h-3.5 text-sky-400" />
+            <span className="hidden sm:inline">Detect Fields</span>
+          </button>
+
+          {/* Convert XFA to Universal Regular PDF */}
+          <button
+            onClick={() => setIsConvertRegularPdfOpen(true)}
+            className="px-2.5 py-1 rounded-md border text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer bg-red-600/90 hover:bg-red-500 border-red-500 text-white shadow-xs"
+            title="Convert dynamic XFA to regular ISO 32000-1 PDF (AcroForm or Flattened)"
+          >
+            <FileCheck className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Convert PDF</span>
+          </button>
 
           {hasXfa && (
             <button
@@ -1205,6 +1246,34 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
           </div>
         )}
       </div>
+
+      {/* Field Detection Modal */}
+      <FieldDetectionModal
+        isOpen={isFieldDetectionOpen}
+        onClose={() => setIsFieldDetectionOpen(false)}
+        pdfBytes={pdfBytes}
+        currentFields={fields}
+        currentPage={primaryPage}
+        onNavigateToField={(page, _x, _y) => {
+          if (page >= 1 && page <= primaryNumPages) {
+            setPrimaryPage(page);
+          }
+        }}
+        onOpenConvertRegularPdf={() => {
+          setIsFieldDetectionOpen(false);
+          setIsConvertRegularPdfOpen(true);
+        }}
+      />
+
+      {/* Convert XFA to Universal Regular PDF Modal */}
+      <RegularPdfConvertModal
+        isOpen={isConvertRegularPdfOpen}
+        onClose={() => setIsConvertRegularPdfOpen(false)}
+        pdfBytes={pdfBytes}
+        filename={filename}
+        fields={fields}
+        pageAnnotations={pageAnnotations}
+      />
     </div>
   );
 };
