@@ -1,4 +1,5 @@
 import { PDFDocument, PDFName, PDFDict, PDFArray, PDFStream, PDFRawStream } from 'pdf-lib';
+import { inflate } from 'pako';
 import { XFAField, XFASubform, XFAPackets } from '../types/pdf';
 import { parseXfaAssistFromElement } from './xfaTooltipHelper';
 
@@ -26,6 +27,32 @@ export function decodeStreamToString(bytes: Uint8Array): string {
     }
     return res;
   }
+}
+
+/**
+ * Decompresses raw PDF stream bytes if Flate/Zlib encoded
+ */
+function getDecompressedStreamBytes(stream: any): Uint8Array {
+  let bytes = stream.getContents();
+  const filterObj = stream.dict?.get(PDFName.of('Filter'));
+  const filterStr = filterObj ? filterObj.toString() : '';
+  if (filterStr.includes('FlateDecode') || filterStr.includes('Fl')) {
+    try {
+      return inflate(bytes);
+    } catch {
+      return bytes;
+    }
+  }
+  // If filter header was omitted or encapsulated, try pako inflate
+  try {
+    const decompressed = inflate(bytes);
+    if (decompressed && decompressed.length > bytes.length) {
+      return decompressed;
+    }
+  } catch {
+    // Already raw uncompressed
+  }
+  return bytes;
 }
 
 /**
@@ -58,7 +85,7 @@ export async function extractXfaPackets(pdfDoc: PDFDocument, rawBytes: Uint8Arra
 
     // Case 1: XFA is a PDFStream / PDFRawStream (contains full XDP or XML)
     if (resolvedXfa instanceof PDFStream || resolvedXfa instanceof PDFRawStream) {
-      const streamBytes = resolvedXfa.getContents();
+      const streamBytes = getDecompressedStreamBytes(resolvedXfa);
       const content = decodeStreamToString(streamBytes);
       if (content.includes('<xdp:xdp') || content.includes('<template') || content.includes('<xdp:package')) {
         packets.fullXdpXml = content;
@@ -72,13 +99,14 @@ export async function extractXfaPackets(pdfDoc: PDFDocument, rawBytes: Uint8Arra
       const arrayLength = resolvedXfa.size();
       for (let i = 0; i < arrayLength; i += 2) {
         const nameObj = resolvedXfa.get(i);
-        const nameStr = nameObj ? nameObj.toString().replace(/^\//, '').replace(/^"|"$/g, '').trim() : `packet_${i}`;
+        // Strip leading slashes, enclosing quotes, and parentheses (e.g. (template) -> template)
+        const nameStr = nameObj ? nameObj.toString().replace(/^[/(]+|[)/]+$/g, '').trim() : `packet_${i}`;
         const streamObj = resolvedXfa.get(i + 1);
         if (!streamObj) continue;
 
         const resolvedStream = pdfDoc.context.lookup(streamObj);
         if (resolvedStream instanceof PDFStream || resolvedStream instanceof PDFRawStream) {
-          const streamBytes = resolvedStream.getContents();
+          const streamBytes = getDecompressedStreamBytes(resolvedStream);
           const xmlContent = decodeStreamToString(streamBytes);
 
           const lowerName = nameStr.toLowerCase();
@@ -92,7 +120,7 @@ export async function extractXfaPackets(pdfDoc: PDFDocument, rawBytes: Uint8Arra
             packets.localeSetXml = xmlContent;
           } else if (lowerName === 'schema') {
             packets.schemaXml = xmlContent;
-          } else if (lowerName === 'xdp') {
+          } else if (lowerName === 'xdp' || lowerName === 'xdp:xdp') {
             packets.fullXdpXml = xmlContent;
             parseXdpIntoPackets(xmlContent, packets);
           } else {
@@ -159,6 +187,7 @@ function extractXfaFromRawBytes(bytes: Uint8Array): XFAPackets {
  * Splits a full XDP XML package into individual component packets
  */
 function parseXdpIntoPackets(xdpContent: string, packets: XFAPackets) {
+  if (typeof DOMParser === 'undefined') return;
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(xdpContent, 'application/xml');
@@ -213,7 +242,7 @@ export function assembleXdpPackage(packets: XFAPackets): string {
  */
 export function extractDataValues(datasetsXml?: string): Map<string, string> {
   const values = new Map<string, string>();
-  if (!datasetsXml) return values;
+  if (!datasetsXml || typeof DOMParser === 'undefined') return values;
 
   try {
     const parser = new DOMParser();
@@ -249,7 +278,7 @@ export function extractDataValues(datasetsXml?: string): Map<string, string> {
  * Parses the XFA `<template>` XML into structured interactive Subforms & Fields
  */
 export function parseXfaTemplate(templateXml?: string, datasetsXml?: string): XFASubform[] {
-  if (!templateXml) return [];
+  if (!templateXml || typeof DOMParser === 'undefined') return [];
 
   const dataValues = extractDataValues(datasetsXml);
   const subforms: XFASubform[] = [];
@@ -258,11 +287,34 @@ export function parseXfaTemplate(templateXml?: string, datasetsXml?: string): XF
     const parser = new DOMParser();
     const doc = parser.parseFromString(templateXml, 'application/xml');
 
-    // Find root subform(s)
-    const rootSubforms = Array.from(doc.querySelectorAll('template > subform, subform'));
-    const topLevelSubforms = rootSubforms.filter(sf => sf.parentElement?.tagName.toLowerCase() === 'template' || sf === rootSubforms[0]);
+    // Find root subform(s) namespace-agnostically
+    const allSubforms = Array.from(doc.getElementsByTagName('subform')).length > 0
+      ? Array.from(doc.getElementsByTagName('subform'))
+      : Array.from(doc.getElementsByTagNameNS('*', 'subform'));
 
-    if (topLevelSubforms.length === 0) {
+    let templateRoot: Element | null = null;
+    if (doc.documentElement && (doc.documentElement.localName === 'template' || doc.documentElement.tagName.toLowerCase().endsWith('template'))) {
+      templateRoot = doc.documentElement;
+    } else {
+      const tmplList = doc.getElementsByTagName('template');
+      templateRoot = tmplList[0] || doc.documentElement;
+    }
+
+    const directChildren = templateRoot
+      ? Array.from(templateRoot.children).filter(c => c.localName === 'subform')
+      : [];
+
+    const topLevelSubforms = directChildren.length > 0
+      ? directChildren
+      : (allSubforms.length > 0
+          ? allSubforms.filter(sf => sf.parentElement?.localName === 'template' || sf.parentElement === doc.documentElement)
+          : []);
+
+    const effectiveSubforms = topLevelSubforms.length > 0
+      ? topLevelSubforms
+      : (allSubforms.length > 0 ? [allSubforms[0]] : []);
+
+    if (effectiveSubforms.length === 0) {
       // Create a fallback subform containing all fields in doc
       const allFields = parseFieldsFromElement(doc.documentElement, dataValues, 'root');
       if (allFields.length > 0) {
@@ -277,7 +329,7 @@ export function parseXfaTemplate(templateXml?: string, datasetsXml?: string): XF
       return [];
     }
 
-    topLevelSubforms.forEach((sfElem, idx) => {
+    effectiveSubforms.forEach((sfElem, idx) => {
       const subform = parseSubformElement(sfElem, dataValues, `sf-${idx}`);
       if (subform.fields.length > 0 || subform.subforms.length > 0) {
         subforms.push(subform);
@@ -448,19 +500,25 @@ function parseFieldsFromElement(
 
   // Determine subform base position and target page
   let subformPage = 1;
-  let subformBaseY = 160;
+  let subformBaseY = 140;
 
   const lowerSfName = subformName.toLowerCase();
-  if (lowerSfName.includes('organization') || lowerSfName.includes('profile')) {
+  if (lowerSfName.includes('sectionb') || lowerSfName.includes('event') || lowerSfName.includes('page2')) {
+    subformPage = 2;
+    subformBaseY = 120;
+  } else if (lowerSfName.includes('sectionc') || lowerSfName.includes('financial') || lowerSfName.includes('page3')) {
+    subformPage = 3;
+    subformBaseY = 120;
+  } else if (lowerSfName.includes('organization') || lowerSfName.includes('profile')) {
     subformPage = 1;
-    subformBaseY = 180;
+    subformBaseY = 160;
   } else if (lowerSfName.includes('contact')) {
     subformPage = 1;
     subformBaseY = 360;
-  } else if (lowerSfName.includes('financial') || lowerSfName.includes('compliance') || lowerSfName.includes('page2') || lowerSfName.includes('schedule')) {
-    subformPage = 2;
-    subformBaseY = 140;
   }
+
+  let flowY = subformBaseY;
+  let flowPage = subformPage;
 
   fieldElements.forEach((fElem, idx) => {
     const name = fElem.getAttribute('name') || `field_${idx}`;
@@ -584,22 +642,31 @@ function parseFieldsFromElement(
     const rawW = fElem.getAttribute('w') || fElem.getAttribute('width') || undefined;
     const rawH = fElem.getAttribute('h') || fElem.getAttribute('height') || undefined;
 
-    let computedX = 50;
-    let computedY = subformBaseY + idx * 42;
-    let computedW = 512;
-    let computedH = type === 'multiline' ? 52 : (type === 'signature' ? 40 : 28);
+    const computedW = rawW ? parseUnitToPoints(rawW, 200) : (type === 'check' ? 24 : 512);
+    const computedH = rawH ? parseUnitToPoints(rawH, type === 'multiline' ? 52 : (type === 'check' ? 24 : 28)) : (type === 'multiline' ? 52 : (type === 'signature' ? 40 : (type === 'check' ? 24 : 28)));
 
-    if (rawX || rawY || rawW || rawH) {
-      const parsedX = parseUnitToPoints(rawX, 0);
-      const parsedY = parseUnitToPoints(rawY, 0);
-      computedX = 50 + parsedX;
-      computedY = subformBaseY + parsedY;
-      computedW = parseUnitToPoints(rawW, 200);
-      computedH = parseUnitToPoints(rawH, type === 'multiline' ? 52 : 28);
+    let computedX = 50;
+    let computedY = flowY;
+    let computedPage = flowPage;
+
+    if (rawX) {
+      computedX = 50 + parseUnitToPoints(rawX, 0);
+    }
+    if (rawY) {
+      computedY = subformBaseY + parseUnitToPoints(rawY, 0);
+      computedPage = subformPage;
+    } else {
+      if (flowY + computedH > 720) {
+        flowPage++;
+        flowY = 60;
+      }
+      computedY = flowY;
+      computedPage = flowPage;
+      flowY += computedH + 8;
     }
 
     const bounds = {
-      pageNumber: subformPage,
+      pageNumber: computedPage,
       x: computedX,
       y: computedY,
       width: computedW,
@@ -843,7 +910,7 @@ export async function saveUpdatedXfaPdf(
           let foundDatasets = false;
           for (let i = 0; i < resolvedXfa.size(); i += 2) {
             const nameObj = resolvedXfa.get(i);
-            const nameStr = nameObj ? nameObj.toString().replace(/^\//, '').replace(/^"|"$/g, '').trim().toLowerCase() : '';
+            const nameStr = nameObj ? nameObj.toString().replace(/^[/(]+|[)/]+$/g, '').trim().toLowerCase() : '';
             if (nameStr === 'datasets' || nameStr === 'data') {
               const streamRef = resolvedXfa.get(i + 1);
               if (streamRef) {

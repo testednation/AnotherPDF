@@ -35,6 +35,8 @@ export interface DetectionScanSummary {
   byType: Record<string, number>;
   averageConfidence: number;
   fields: DetectedFormField[];
+  isDynamicXfaFallback?: boolean;
+  xfaSubformsCount?: number;
 }
 
 export interface DetectionScanOptions {

@@ -23,6 +23,7 @@ interface HeaderProps {
   onSwitchToAcrobatUI?: () => void;
   onSwitchToStudioUI?: () => void;
   onLoadCanadaBookFund?: () => void;
+  onLoadAttachedXfa?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -44,6 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSwitchToAcrobatUI,
   onSwitchToStudioUI,
   onLoadCanadaBookFund,
+  onLoadAttachedXfa,
 }) => {
   return (
     <header className="flex items-center justify-between gap-3 sm:gap-4 lg:gap-6 px-4 sm:px-6 py-3 bg-slate-900/90 border-b border-slate-800 backdrop-blur-md sticky top-0 z-40">
@@ -253,6 +255,18 @@ export const Header: React.FC<HeaderProps> = ({
               <span>Studio</span>
             </button>
           </div>
+        )}
+
+        {onLoadAttachedXfa && (
+          <button
+            onClick={onLoadAttachedXfa}
+            className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-amber-200 bg-amber-950/80 hover:bg-amber-900 border border-amber-600/70 rounded-lg transition-colors shadow-xs cursor-pointer"
+            title="Load the attached dynamic LiveCycle XFA PDF (xfa_771a0a93.pdf)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Load Attached XFA</span>
+            <span className="text-[10px] font-mono bg-amber-500/20 px-1 rounded text-amber-300">44 Fields</span>
+          </button>
         )}
 
         <PWAInstallButton />

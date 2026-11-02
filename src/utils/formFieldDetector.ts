@@ -1,6 +1,7 @@
 import { PDFDocument, PDFDict, PDFName, PDFArray } from 'pdf-lib';
 import { pdfjsLib } from './pdfWorker';
-import { XFAField } from '../types/pdf';
+import { XFAField, XFASubform } from '../types/pdf';
+import { extractXfaPackets, parseXfaTemplate } from './xfaEngine';
 import {
   DetectedFormField,
   DetectionScanSummary,
@@ -60,9 +61,44 @@ export async function detectAllFormFields(
   const minConfidence =
     sensitivity === 'high' ? 0.70 : sensitivity === 'conservative' ? 0.88 : 0.80;
 
+  let xfaFieldsToUse = [...knownXfaFields];
+  let isDynamicXfaFallback = false;
+  let subformsCount = 0;
+
+  // Check if PDF is a dynamic LiveCycle XFA fallback document
+  try {
+    const rawSample = new TextDecoder('latin1').decode(pdfBytes.slice(0, 40000));
+    if (rawSample.includes('Please wait') || rawSample.includes('If this message is not eventually replaced')) {
+      isDynamicXfaFallback = true;
+    }
+  } catch {}
+
+  // If known XFA fields were not passed or empty, auto-extract from PDF structure
+  if (includeXfa && xfaFieldsToUse.length === 0) {
+    try {
+      const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+      const packets = await extractXfaPackets(pdfDoc, pdfBytes);
+      if (packets.templateXml) {
+        const parsedSubforms = parseXfaTemplate(packets.templateXml, packets.datasetsXml);
+        subformsCount = parsedSubforms.length;
+        const autoCollected: XFAField[] = [];
+        const collect = (list: XFASubform[]) => {
+          list.forEach(sf => {
+            autoCollected.push(...sf.fields);
+            if (sf.subforms.length > 0) collect(sf.subforms);
+          });
+        };
+        collect(parsedSubforms);
+        xfaFieldsToUse = autoCollected;
+      }
+    } catch (e) {
+      console.warn('Auto XFA extraction in formFieldDetector note:', e);
+    }
+  }
+
   // 1. TIER 1: Ingest XFA Fields
-  if (includeXfa && knownXfaFields.length > 0) {
-    knownXfaFields.forEach(f => {
+  if (includeXfa && xfaFieldsToUse.length > 0) {
+    xfaFieldsToUse.forEach(f => {
       const pageNum = f.bounds?.pageNumber || 1;
       if (pageRange === 'current' && pageNum !== currentPage) return;
 
@@ -313,6 +349,8 @@ export async function detectAllFormFields(
     byType,
     averageConfidence,
     fields: detected,
+    isDynamicXfaFallback,
+    xfaSubformsCount: subformsCount,
   };
 }
 

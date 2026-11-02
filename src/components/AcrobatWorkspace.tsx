@@ -76,6 +76,7 @@ interface AcrobatWorkspaceProps {
   onExportJson: () => void;
   onDownloadAllZip: () => void;
   onLoadCanadaBookFund: () => void;
+  onLoadAttachedXfa?: () => void;
   onFileUpload: (file: File) => void;
   onAutofillSample: () => void;
   onResetDefaults: () => void;
@@ -114,6 +115,7 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
   onExportJson,
   onDownloadAllZip,
   onLoadCanadaBookFund,
+  onLoadAttachedXfa,
   onFileUpload,
   onAutofillSample,
   onResetDefaults,
@@ -201,6 +203,18 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
             <span>Open from URL</span>
           </button>
 
+          {onLoadAttachedXfa && (
+            <button
+              onClick={onLoadAttachedXfa}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] bg-amber-950/80 hover:bg-amber-900/90 text-amber-200 border border-amber-600/80 transition-colors shadow-xs font-medium cursor-pointer"
+              title="Load the attached dynamic LiveCycle XFA PDF (xfa_771a0a93.pdf)"
+            >
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              <span>Load Attached XFA</span>
+              <span className="text-[9px] bg-amber-500/20 px-1 py-0.2 rounded text-amber-300 font-mono">44 Fields</span>
+            </button>
+          )}
+
           <button
             onClick={onLoadCanadaBookFund}
             className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] bg-red-950/80 hover:bg-red-900/90 text-red-200 border border-red-800/80 transition-colors"
@@ -253,6 +267,18 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                     onChange={e => e.target.files?.[0] && onFileUpload(e.target.files[0])}
                   />
                 </label>
+                {onLoadAttachedXfa && (
+                  <button
+                    onClick={() => {
+                      onLoadAttachedXfa();
+                      setActiveMenu(null);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[#3a3a3a] text-amber-300 font-medium flex items-center justify-between cursor-pointer"
+                  >
+                    <span>Load Attached XFA (Sample)</span>
+                    <span className="text-[10px] font-mono bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/40">44 Fields</span>
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     onLoadCanadaBookFund();

@@ -20,6 +20,7 @@ interface DocumentToolbarProps {
   onLoadSampleXfa: () => void;
   onLoadSampleMedia: () => void;
   onLoadCanadaBookFund?: () => void;
+  onLoadAttachedXfa?: () => void;
   onOpenUrlModal?: () => void;
   onImportXml: (xmlString: string) => void;
   onExportXml: () => void;
@@ -37,6 +38,7 @@ export const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
   onLoadSampleXfa,
   onLoadSampleMedia,
   onLoadCanadaBookFund,
+  onLoadAttachedXfa,
   onOpenUrlModal,
   onImportXml,
   onExportXml,
@@ -167,6 +169,20 @@ export const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
             >
               Sample Media
             </button>
+            {onLoadAttachedXfa && (
+              <>
+                <span className="text-slate-600 text-xs">|</span>
+                <button
+                  onClick={onLoadAttachedXfa}
+                  className="px-2.5 py-1 text-xs font-semibold text-amber-300 hover:text-white hover:bg-amber-950/80 rounded transition-colors whitespace-nowrap flex items-center gap-1.5 cursor-pointer"
+                  title="Load the attached dynamic LiveCycle XFA PDF (xfa_771a0a93.pdf)"
+                >
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  <span>Attached XFA Sample</span>
+                  <span className="text-[10px] font-mono bg-amber-500/20 px-1 py-0.2 rounded text-amber-300">44 Fields</span>
+                </button>
+              </>
+            )}
             {onLoadCanadaBookFund && (
               <>
                 <span className="text-slate-600 text-xs">|</span>

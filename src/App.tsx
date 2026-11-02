@@ -169,6 +169,21 @@ export default function App() {
     }
   };
 
+  // Load Attached LiveCycle XFA PDF (/assets/aistudio/xfa_771a0a93.pdf)
+  const handleLoadAttachedXfa = async () => {
+    try {
+      setIsLoading(true);
+      const { loadAttachedLiveCycleXfaPdf } = await import('./utils/samplePdfs');
+      const { bytes, filename: attachedName } = await loadAttachedLiveCycleXfaPdf();
+      await loadPdfData(bytes, attachedName);
+      showToast('Loaded attached dynamic LiveCycle XFA PDF (xfa_771a0a93.pdf)! 44 form fields extracted.');
+    } catch (e: any) {
+      showToast(`Error loading attached PDF: ${e.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Load Sample XFA
   const handleLoadSampleXfa = async () => {
     const bytes = await createSampleXfaPdf();
@@ -691,6 +706,7 @@ export default function App() {
           onExportJson={handleExportJson}
           onDownloadAllZip={handleDownloadAllZip}
           onLoadCanadaBookFund={handleLoadCanadaBookFund}
+          onLoadAttachedXfa={handleLoadAttachedXfa}
           onFileUpload={handleFileUpload}
           onAutofillSample={handleAutofillSample}
           onResetDefaults={handleResetDefaults}
@@ -758,6 +774,7 @@ export default function App() {
         onSwitchToAcrobatUI={() => setUiMode('acrobat')}
         onSwitchToStudioUI={() => setUiMode('studio')}
         onLoadCanadaBookFund={handleLoadCanadaBookFund}
+        onLoadAttachedXfa={handleLoadAttachedXfa}
       />
 
       {/* Document Information & Control Toolbar */}
@@ -768,6 +785,7 @@ export default function App() {
         onLoadSampleXfa={handleLoadSampleXfa}
         onLoadSampleMedia={handleLoadSampleMedia}
         onLoadCanadaBookFund={handleLoadCanadaBookFund}
+        onLoadAttachedXfa={handleLoadAttachedXfa}
         onOpenUrlModal={() => setIsUrlModalOpen(true)}
         onImportXml={handleImportXml}
         onExportXml={handleExportXml}

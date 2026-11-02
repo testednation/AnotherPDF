@@ -1282,3 +1282,18 @@ export async function createCanadaBookFundXfaPdf(): Promise<Uint8Array> {
   return await pdfDoc.save();
 }
 
+/**
+ * Loads the user's attached LiveCycle dynamic XFA PDF sample (/assets/aistudio/xfa_771a0a93.pdf)
+ */
+export async function loadAttachedLiveCycleXfaPdf(): Promise<{ bytes: Uint8Array; filename: string }> {
+  const res = await fetch('/assets/aistudio/xfa_771a0a93.pdf');
+  if (!res.ok) {
+    throw new Error(`Failed to load attached XFA PDF (${res.status} ${res.statusText})`);
+  }
+  const arrayBuffer = await res.arrayBuffer();
+  return {
+    bytes: new Uint8Array(arrayBuffer),
+    filename: 'xfa_771a0a93.pdf',
+  };
+}
+

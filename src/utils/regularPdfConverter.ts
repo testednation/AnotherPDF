@@ -1,6 +1,7 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import { pdfjsLib } from './pdfWorker';
-import { XFAField } from '../types/pdf';
+import { XFAField, XFASubform } from '../types/pdf';
+import { extractXfaPackets, parseXfaTemplate } from './xfaEngine';
 import { PageAnnotations, DrawingStroke } from '../types/drawing';
 
 export interface ConvertXfaToRegularPdfOptions {
@@ -36,11 +37,34 @@ export async function convertXfaToRegularPdf(
   onProgress?.({
     current: 0,
     total: 100,
-    message: 'Initializing XFA rendering engine with PDF.js...',
+    message: 'Analyzing XFA structure & packet architecture...',
     percent: 5,
   });
 
-  // 1. Load the XFA document via PDF.js with full dynamic XFA evaluation enabled
+  // Ensure fields are available
+  let fieldsToConvert = [...fields];
+  if (fieldsToConvert.length === 0) {
+    try {
+      const inspectDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
+      const packets = await extractXfaPackets(inspectDoc, pdfBytes);
+      if (packets.templateXml) {
+        const parsedSubforms = parseXfaTemplate(packets.templateXml, packets.datasetsXml);
+        const autoFields: XFAField[] = [];
+        const collect = (list: XFASubform[]) => {
+          list.forEach(sf => {
+            autoFields.push(...sf.fields);
+            if (sf.subforms.length > 0) collect(sf.subforms);
+          });
+        };
+        collect(parsedSubforms);
+        fieldsToConvert = autoFields;
+      }
+    } catch (e) {
+      console.warn('Auto field extraction note:', e);
+    }
+  }
+
+  // 1. Load the XFA document via PDF.js
   const pdfJsDoc = await pdfjsLib.getDocument({
     data: pdfBytes.slice(0),
     enableXfa: true,
@@ -51,6 +75,17 @@ export async function convertXfaToRegularPdf(
     throw new Error('Unable to extract rendered pages from XFA document');
   }
 
+  // Check if this document displays the classic LiveCycle "Please wait..." fallback page
+  let isFallbackNoticePage = false;
+  try {
+    const page1 = await pdfJsDoc.getPage(1);
+    const textContent = await page1.getTextContent();
+    const textStr = textContent.items.map((it: any) => it.str).join(' ');
+    if (textStr.includes('Please wait') || textStr.includes('If this message is not eventually replaced')) {
+      isFallbackNoticePage = true;
+    }
+  } catch {}
+
   // 2. Initialize new standard PDFDocument via pdf-lib
   const outPdfDoc = await PDFDocument.create();
   outPdfDoc.setTitle(documentTitle);
@@ -59,140 +94,312 @@ export async function convertXfaToRegularPdf(
   outPdfDoc.setCreationDate(new Date());
 
   const helvetica = await outPdfDoc.embedFont(StandardFonts.Helvetica);
+  const helveticaBold = await outPdfDoc.embedFont(StandardFonts.HelveticaBold);
   const form = outPdfDoc.getForm();
   const usedFieldNames = new Set<string>();
 
-  // 3. Render each page of the XFA document to high-resolution canvas and embed into the standard PDF
-  for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-    const pagePercent = Math.round(10 + (pageNum / numPages) * 75);
-    onProgress?.({
-      current: pageNum,
-      total: numPages,
-      message: `Rendering & baking Page ${pageNum} of ${numPages} (${mode === 'interactive' ? 'Interactive AcroForm' : 'Flattened'})...`,
-      percent: pagePercent,
-    });
+  // CASE A: Pure Dynamic LiveCycle XFA fallback document ("Please wait...")
+  // Instead of baking the "Please wait" warning screen, synthesize genuine clean PDF form pages!
+  if (isFallbackNoticePage && fieldsToConvert.length > 0) {
+    const totalTargetPages = Math.max(1, ...fieldsToConvert.map(f => f.bounds?.pageNumber || 1));
 
-    const page = await pdfJsDoc.getPage(pageNum);
-    const viewport = page.getViewport({ scale: dpiScale });
-    const unscaledViewport = page.getViewport({ scale: 1 });
+    for (let pageNum = 1; pageNum <= totalTargetPages; pageNum++) {
+      onProgress?.({
+        current: pageNum,
+        total: totalTargetPages,
+        message: `Synthesizing clean standard Page ${pageNum} of ${totalTargetPages} (${mode === 'interactive' ? 'Interactive Form' : 'Flattened'})...`,
+        percent: Math.round(15 + (pageNum / totalTargetPages) * 70),
+      });
 
-    const pageWidth = unscaledViewport.width;
-    const pageHeight = unscaledViewport.height;
+      const pageWidth = 612; // Standard Letter
+      const pageHeight = 792;
+      const outPage = outPdfDoc.addPage([pageWidth, pageHeight]);
 
-    // Create offscreen canvas for crisp visual rendering
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(viewport.width);
-    canvas.height = Math.round(viewport.height);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      throw new Error(`Failed to create 2D canvas context for page ${pageNum}`);
-    }
+      // Header Banner
+      outPage.drawRectangle({
+        x: 0,
+        y: pageHeight - 65,
+        width: pageWidth,
+        height: 65,
+        color: rgb(0.96, 0.97, 0.99),
+      });
+      outPage.drawLine({
+        start: { x: 0, y: pageHeight - 65 },
+        end: { x: pageWidth, y: pageHeight - 65 },
+        thickness: 1,
+        color: rgb(0.85, 0.88, 0.93),
+      });
 
-    // Render page graphics, text, tables, and borders from XFA engine
-    await page.render({
-      canvasContext: ctx,
-      viewport: viewport,
-      canvas: canvas as any,
-    }).promise;
+      // Document Title
+      outPage.drawText(documentTitle.replace(/\.pdf$/i, ''), {
+        x: 40,
+        y: pageHeight - 38,
+        size: 14,
+        font: helveticaBold,
+        color: rgb(0.1, 0.15, 0.25),
+      });
 
-    // Optional: Draw freehand annotations / signatures directly onto the high-resolution page canvas
-    if (includeAnnotations && pageAnnotations[pageNum] && pageAnnotations[pageNum].length > 0) {
-      drawAnnotationsOnCanvas(ctx, pageAnnotations[pageNum], dpiScale);
-    }
+      outPage.drawText(`ISO 32000-1 Universal PDF  •  Page ${pageNum} of ${totalTargetPages}`, {
+        x: 40,
+        y: pageHeight - 54,
+        size: 8.5,
+        font: helvetica,
+        color: rgb(0.4, 0.45, 0.55),
+      });
 
-    // Convert canvas to PNG data URL
-    const pngDataUrl = canvas.toDataURL('image/png');
-    const embeddedImage = await outPdfDoc.embedPng(pngDataUrl);
-
-    // Add page to standard PDFDocument with exact native dimensions
-    const outPage = outPdfDoc.addPage([pageWidth, pageHeight]);
-
-    // Draw the rendered visual page covering full width and height
-    outPage.drawImage(embeddedImage, {
-      x: 0,
-      y: 0,
-      width: pageWidth,
-      height: pageHeight,
-    });
-
-    // 4. If Interactive AcroForm mode: Inject standard PDF interactive form fields
-    if (mode === 'interactive') {
-      const pageFields = fields.filter(f => (f.bounds?.pageNumber || 1) === pageNum);
+      // Fields for this page
+      const pageFields = fieldsToConvert.filter(f => (f.bounds?.pageNumber || 1) === pageNum && f.visibility !== 'hidden');
 
       pageFields.forEach((f, fieldIdx) => {
-        if (!f.bounds) return;
+        const bounds = f.bounds || { x: 50, y: 120 + fieldIdx * 45, width: 512, height: 28 };
+        const x = Math.max(40, Math.min(bounds.x, pageWidth - 60));
+        const rawY = bounds.y;
+        const w = Math.max(20, Math.min(bounds.width, pageWidth - x - 40));
+        const h = Math.max(14, Math.min(bounds.height, pageHeight - 80));
 
-        // Ensure unique, clean AcroForm field name
+        // Top-down Y to bottom-up PDF coordinates
+        const pdfLibY = Math.max(30, pageHeight - rawY - h);
+        const labelY = Math.min(pageHeight - 20, pdfLibY + h + 3);
+
+        const val = includeFormValues && f.value !== undefined ? String(f.value) : '';
+        const caption = f.caption || f.name;
+
+        // Draw Field Label
+        if (f.type !== 'check') {
+          const cleanCaption = caption.length > 55 ? caption.slice(0, 52) + '...' : caption;
+          try {
+            outPage.drawText(cleanCaption, {
+              x,
+              y: labelY,
+              size: 8,
+              font: helveticaBold,
+              color: rgb(0.25, 0.3, 0.4),
+            });
+          } catch {}
+        }
+
+        // Draw Field Container Rectangle
+        if (mode === 'flattened' || f.type === 'check') {
+          outPage.drawRectangle({
+            x,
+            y: pdfLibY,
+            width: f.type === 'check' ? 16 : w,
+            height: f.type === 'check' ? 16 : h,
+            borderColor: rgb(0.75, 0.8, 0.88),
+            borderWidth: 0.75,
+            color: rgb(0.985, 0.99, 1.0),
+          });
+        }
+
+        // Handle Interactive AcroForm injection
         let cleanName = (f.name || `field_p${pageNum}_${fieldIdx}`).replace(/[^\w.-]/g, '_');
         if (usedFieldNames.has(cleanName)) {
           cleanName = `${cleanName}_${fieldIdx}`;
         }
         usedFieldNames.add(cleanName);
 
-        const x = Math.max(0, Math.min(f.bounds.x, pageWidth - 10));
-        const rawY = f.bounds.y;
-        const w = Math.max(16, Math.min(f.bounds.width, pageWidth - x));
-        const h = Math.max(12, Math.min(f.bounds.height, pageHeight - 10));
-
-        // Convert top-down Y (PDF.js / canvas) to bottom-up Y (pdf-lib)
-        const pdfLibY = Math.max(0, pageHeight - rawY - h);
-
-        const val = includeFormValues && f.value !== undefined ? String(f.value) : '';
-
-        try {
+        if (mode === 'interactive') {
+          try {
+            if (f.type === 'check') {
+              const cb = form.createCheckBox(cleanName);
+              if (val === '1' || val === 'true' || val === 'yes' || val === 'on') {
+                cb.check();
+              }
+              cb.addToPage(outPage, {
+                x,
+                y: pdfLibY,
+                width: 16,
+                height: 16,
+                borderWidth: 1,
+                borderColor: rgb(0.35, 0.4, 0.5),
+              });
+              // Draw check caption next to box
+              outPage.drawText(caption, {
+                x: x + 22,
+                y: pdfLibY + 4,
+                size: 8.5,
+                font: helvetica,
+                color: rgb(0.2, 0.25, 0.35),
+              });
+            } else if (f.type === 'choice' && f.options && f.options.length > 0) {
+              const dd = form.createDropdown(cleanName);
+              dd.setOptions(f.options);
+              if (val && f.options.includes(val)) dd.select(val);
+              dd.addToPage(outPage, {
+                x,
+                y: pdfLibY,
+                width: w,
+                height: h,
+                borderWidth: 0.75,
+                borderColor: rgb(0.65, 0.7, 0.8),
+              });
+            } else {
+              const tf = form.createTextField(cleanName);
+              if (val) tf.setText(val.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ''));
+              if (f.type === 'multiline') tf.enableMultiline();
+              tf.addToPage(outPage, {
+                x,
+                y: pdfLibY,
+                width: w,
+                height: h,
+                borderWidth: 0.75,
+                borderColor: rgb(0.65, 0.7, 0.8),
+                backgroundColor: rgb(0.99, 0.995, 1.0),
+              });
+            }
+          } catch (err) {
+            console.warn(`AcroForm error for ${cleanName}:`, err);
+          }
+        } else {
+          // Flattened mode: Render text value directly
           if (f.type === 'check') {
-            const cb = form.createCheckBox(cleanName);
             const isChecked = val === '1' || val === 'true' || val === 'yes' || val === 'on';
             if (isChecked) {
-              cb.check();
+              outPage.drawText('✓', {
+                x: x + 3,
+                y: pdfLibY + 3,
+                size: 11,
+                font: helveticaBold,
+                color: rgb(0.1, 0.4, 0.8),
+              });
             }
-            cb.addToPage(outPage, {
-              x,
-              y: pdfLibY,
-              width: Math.min(w, 18),
-              height: Math.min(h, 18),
-              borderWidth: 1,
-              borderColor: rgb(0.3, 0.3, 0.3),
+            outPage.drawText(caption, {
+              x: x + 22,
+              y: pdfLibY + 4,
+              size: 8.5,
+              font: helvetica,
+              color: rgb(0.2, 0.25, 0.35),
             });
-          } else if (f.type === 'choice' && f.options && f.options.length > 0) {
-            const dd = form.createDropdown(cleanName);
-            dd.setOptions(f.options);
-            if (val && f.options.includes(val)) {
-              dd.select(val);
-            }
-            dd.addToPage(outPage, {
-              x,
-              y: pdfLibY,
-              width: w,
-              height: h,
-              borderWidth: 0.75,
-              borderColor: rgb(0.6, 0.6, 0.6),
-            });
-          } else {
-            // Text, multiline, numeric, date, signature
-            const tf = form.createTextField(cleanName);
-            if (val) {
-              // Sanitize non-printable characters for standard Helvetica
-              const cleanVal = val.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
-              tf.setText(cleanVal);
-            }
-            if (f.type === 'multiline') {
-              tf.enableMultiline();
-            }
-            tf.addToPage(outPage, {
-              x,
-              y: pdfLibY,
-              width: w,
-              height: h,
-              borderWidth: 0.75,
-              borderColor: rgb(0.65, 0.65, 0.65),
-              backgroundColor: rgb(0.98, 0.98, 1.0),
-            });
+          } else if (val) {
+            try {
+              outPage.drawText(val.slice(0, 80), {
+                x: x + 6,
+                y: pdfLibY + (h / 2) - 4,
+                size: 9,
+                font: helvetica,
+                color: rgb(0.1, 0.15, 0.25),
+              });
+            } catch {}
           }
-        } catch (fieldErr) {
-          console.warn(`Could not add AcroForm field ${cleanName}:`, fieldErr);
         }
       });
+
+      // Draw handwritten annotations on this synthesized page if present
+      if (includeAnnotations && pageAnnotations[pageNum] && pageAnnotations[pageNum].length > 0) {
+        drawAnnotationsOnPdfPage(outPage, pageAnnotations[pageNum]);
+      }
+    }
+  } else {
+    // CASE B: Standard / Static rendered pages via PDF.js canvas
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      const pagePercent = Math.round(10 + (pageNum / numPages) * 75);
+      onProgress?.({
+        current: pageNum,
+        total: numPages,
+        message: `Rendering & baking Page ${pageNum} of ${numPages} (${mode === 'interactive' ? 'Interactive AcroForm' : 'Flattened'})...`,
+        percent: pagePercent,
+      });
+
+      const page = await pdfJsDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: dpiScale });
+      const unscaledViewport = page.getViewport({ scale: 1 });
+
+      const pageWidth = unscaledViewport.width;
+      const pageHeight = unscaledViewport.height;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(viewport.width);
+      canvas.height = Math.round(viewport.height);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        throw new Error(`Failed to create 2D canvas context for page ${pageNum}`);
+      }
+
+      await page.render({
+        canvasContext: ctx,
+        viewport: viewport,
+        canvas: canvas as any,
+      }).promise;
+
+      if (includeAnnotations && pageAnnotations[pageNum] && pageAnnotations[pageNum].length > 0) {
+        drawAnnotationsOnCanvas(ctx, pageAnnotations[pageNum], dpiScale);
+      }
+
+      const pngDataUrl = canvas.toDataURL('image/png');
+      const embeddedImage = await outPdfDoc.embedPng(pngDataUrl);
+
+      const outPage = outPdfDoc.addPage([pageWidth, pageHeight]);
+      outPage.drawImage(embeddedImage, {
+        x: 0,
+        y: 0,
+        width: pageWidth,
+        height: pageHeight,
+      });
+
+      if (mode === 'interactive') {
+        const pageFields = fieldsToConvert.filter(f => (f.bounds?.pageNumber || 1) === pageNum);
+
+        pageFields.forEach((f, fieldIdx) => {
+          if (!f.bounds) return;
+
+          let cleanName = (f.name || `field_p${pageNum}_${fieldIdx}`).replace(/[^\w.-]/g, '_');
+          if (usedFieldNames.has(cleanName)) {
+            cleanName = `${cleanName}_${fieldIdx}`;
+          }
+          usedFieldNames.add(cleanName);
+
+          const x = Math.max(0, Math.min(f.bounds.x, pageWidth - 10));
+          const rawY = f.bounds.y;
+          const w = Math.max(16, Math.min(f.bounds.width, pageWidth - x));
+          const h = Math.max(12, Math.min(f.bounds.height, pageHeight - 10));
+
+          const pdfLibY = Math.max(0, pageHeight - rawY - h);
+          const val = includeFormValues && f.value !== undefined ? String(f.value) : '';
+
+          try {
+            if (f.type === 'check') {
+              const cb = form.createCheckBox(cleanName);
+              const isChecked = val === '1' || val === 'true' || val === 'yes' || val === 'on';
+              if (isChecked) cb.check();
+              cb.addToPage(outPage, {
+                x,
+                y: pdfLibY,
+                width: Math.min(w, 18),
+                height: Math.min(h, 18),
+                borderWidth: 1,
+                borderColor: rgb(0.3, 0.3, 0.3),
+              });
+            } else if (f.type === 'choice' && f.options && f.options.length > 0) {
+              const dd = form.createDropdown(cleanName);
+              dd.setOptions(f.options);
+              if (val && f.options.includes(val)) dd.select(val);
+              dd.addToPage(outPage, {
+                x,
+                y: pdfLibY,
+                width: w,
+                height: h,
+                borderWidth: 0.75,
+                borderColor: rgb(0.6, 0.6, 0.6),
+              });
+            } else {
+              const tf = form.createTextField(cleanName);
+              if (val) tf.setText(val.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ''));
+              if (f.type === 'multiline') tf.enableMultiline();
+              tf.addToPage(outPage, {
+                x,
+                y: pdfLibY,
+                width: w,
+                height: h,
+                borderWidth: 0.75,
+                borderColor: rgb(0.65, 0.65, 0.65),
+                backgroundColor: rgb(0.98, 0.98, 1.0),
+              });
+            }
+          } catch (fieldErr) {
+            console.warn(`Could not add AcroForm field ${cleanName}:`, fieldErr);
+          }
+        });
+      }
     }
   }
 
@@ -282,4 +489,29 @@ function drawAnnotationsOnCanvas(
 
     ctx.restore();
   }
+}
+
+/**
+ * Draws handwritten strokes directly onto a PDF page via pdf-lib
+ */
+function drawAnnotationsOnPdfPage(
+  page: any,
+  strokes: DrawingStroke[]
+) {
+  if (!strokes || strokes.length === 0) return;
+  const pageHeight = page.getHeight();
+  strokes.forEach(s => {
+    if (!s.points || s.points.length < 2) return;
+    for (let i = 0; i < s.points.length - 1; i++) {
+      const p1 = s.points[i];
+      const p2 = s.points[i + 1];
+      page.drawLine({
+        start: { x: p1.x, y: Math.max(0, pageHeight - p1.y) },
+        end: { x: p2.x, y: Math.max(0, pageHeight - p2.y) },
+        thickness: Math.max(1, s.width),
+        color: rgb(0.12, 0.35, 0.85),
+        opacity: s.opacity || 1.0,
+      });
+    }
+  });
 }

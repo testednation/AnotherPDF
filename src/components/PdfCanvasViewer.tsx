@@ -667,22 +667,30 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
     <div className="max-w-7xl mx-auto py-5 px-4 sm:px-6 space-y-4">
       {/* Top Banner Notice */}
       {hasXfa && (
-        <div className="bg-sky-950/40 border border-sky-800/60 rounded-xl p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+        <div className="bg-gradient-to-r from-sky-950/70 via-slate-900 to-amber-950/50 border border-sky-600/50 rounded-xl p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs shadow-md">
           <div className="flex items-start gap-2.5">
-            <Sparkles className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+            <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <div className="text-slate-300">
-              <strong className="text-sky-300 font-semibold">Interactive XFA Recognition Active:</strong> Every recognized form field boundary is highlighted on the canvas below.
-              Click any field to inspect its geometry, coordinates, XML bindings, or customize its appearance without flattening.
+              <strong className="text-sky-300 font-semibold">LiveCycle Dynamic XFA Recognition Active:</strong>{' '}
+              {fields.length > 0 ? (
+                <span>
+                  All <strong className="text-white font-mono bg-sky-950 px-1.5 py-0.5 rounded border border-sky-700">{fields.length} form fields</strong> across all subforms are extracted and mapped. If this file shows <em>"Please wait..."</em> in other viewers, click <strong>"Convert to Regular PDF"</strong> to bake into standard ISO 32000-1 AcroForm.
+                </span>
+              ) : (
+                <span>
+                  Dynamic XML packets loaded. Click <strong>"Detect Fields"</strong> to run multi-tier pattern analysis.
+                </span>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 self-start md:self-auto shrink-0">
             <button
               onClick={() => setIsFieldDetectionOpen(true)}
-              className="px-2.5 py-1 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="px-2.5 py-1 text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
               title="Run multi-tier field recognition across all document pages"
             >
               <Scan className="w-3.5 h-3.5 text-sky-400" />
-              <span>Detect Fields</span>
+              <span>Detect Fields ({fields.length})</span>
             </button>
             <button
               onClick={() => setIsConvertRegularPdfOpen(true)}
@@ -693,11 +701,12 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
               <span>Convert to Regular PDF</span>
             </button>
             <button
-              onClick={onSwitchToResources}
-              className="px-2.5 py-1 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
+              onClick={() => setIsPrintScaleOpen(true)}
+              className="px-2.5 py-1 text-xs font-medium text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-800 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Scale printout between paper sizes"
             >
-              <FolderArchive className="w-3.5 h-3.5 text-sky-400" />
-              <span>Extract Resources</span>
+              <Printer className="w-3.5 h-3.5 text-sky-400" />
+              <span>Scale Printout</span>
             </button>
             <button
               onClick={onSwitchToForm}
