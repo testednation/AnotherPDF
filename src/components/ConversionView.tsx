@@ -20,6 +20,7 @@ import {
   FileCheck,
   Smartphone,
   Monitor,
+  Printer,
 } from 'lucide-react';
 import {
   XFAField,
@@ -44,6 +45,7 @@ import {
 import { downloadResource } from '../utils/resourceExtractor';
 import { RegularPdfConvertModal } from './RegularPdfConvertModal';
 import { FieldDetectionModal } from './FieldDetectionModal';
+import { PrintScaleModal } from './PrintScaleModal';
 
 interface ConversionViewProps {
   filename: string;
@@ -74,6 +76,7 @@ export const ConversionView: React.FC<ConversionViewProps> = ({
 }) => {
   const [isConvertRegularModalOpen, setIsConvertRegularModalOpen] = useState(false);
   const [isFieldDetectModalOpen, setIsFieldDetectModalOpen] = useState(false);
+  const [isPrintScaleModalOpen, setIsPrintScaleModalOpen] = useState(false);
   // Conversion configuration
   const [options, setOptions] = useState<ConversionOptions>({
     includeMetadata: true,
@@ -312,6 +315,15 @@ export const ConversionView: React.FC<ConversionViewProps> = ({
               <Scan className="w-4 h-4 text-sky-400" />
               <span>Scan &amp; Detect Fields</span>
             </button>
+
+            <button
+              onClick={() => setIsPrintScaleModalOpen(true)}
+              disabled={!pdfBytes}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-sky-200 bg-sky-950/80 hover:bg-sky-900 border border-sky-700/70 rounded-lg transition-all cursor-pointer disabled:opacity-50"
+            >
+              <Printer className="w-4 h-4 text-sky-400" />
+              <span>Scale Printout Paper Size</span>
+            </button>
           </div>
         </div>
       </div>
@@ -462,6 +474,47 @@ export const ConversionView: React.FC<ConversionViewProps> = ({
             >
               <Download className="w-3.5 h-3.5" />
               <span>Convert PDF</span>
+            </button>
+          </div>
+        </div>
+
+        {/* CARD 0B: PRINT & PAPER SIZE SCALER (LETTER <-> A4 / LEGAL / TABLOID) */}
+        <div className="bg-slate-900 border-2 border-sky-500/40 hover:border-sky-500/70 rounded-xl p-5 flex flex-col justify-between space-y-4 transition-all relative overflow-hidden shadow-md">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400">
+                <Printer className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] font-mono font-semibold uppercase px-2 py-0.5 rounded bg-sky-950/80 border border-sky-800 text-sky-300">
+                Printer Tray Scaler
+              </span>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-1.5">
+                <span>Scale Printout Size</span>
+                <span className="text-sky-400 font-mono text-xs">(Letter ↔ A4)</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                Rescale printouts from one physical printer paper size to another (US Letter, Legal, Tabloid, ISO A4, A3, A5, B4/B5, or Custom).
+              </p>
+            </div>
+
+            <div className="text-[11px] text-slate-500 font-mono space-y-0.5">
+              <div>· Prevents horizontal &amp; footer edge clipping</div>
+              <div>· Live target sheet &amp; margin blueprint</div>
+              <div>· Optional crop marks &amp; direct print dialog</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 pt-2 border-t border-slate-800/80">
+            <button
+              onClick={() => setIsPrintScaleModalOpen(true)}
+              disabled={!pdfBytes}
+              className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-950 bg-sky-400 hover:bg-sky-300 rounded-lg transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Open Print Size Scaler</span>
             </button>
           </div>
         </div>
@@ -951,6 +1004,19 @@ export const ConversionView: React.FC<ConversionViewProps> = ({
             setIsFieldDetectModalOpen(false);
             setIsConvertRegularModalOpen(true);
           }}
+        />
+      )}
+
+      {/* Scale Printout Between Printer Paper Sizes Modal */}
+      {pdfBytes && (
+        <PrintScaleModal
+          isOpen={isPrintScaleModalOpen}
+          onClose={() => setIsPrintScaleModalOpen(false)}
+          pdfBytes={pdfBytes}
+          filename={filename}
+          fields={fields}
+          pageAnnotations={pageAnnotations}
+          onShowToast={notify}
         />
       )}
     </div>

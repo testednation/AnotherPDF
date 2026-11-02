@@ -28,6 +28,7 @@ import {
   FileCheck,
   FolderTree,
   Scan,
+  Printer,
 } from 'lucide-react';
 import { pdfjsLib } from '../utils/pdfWorker';
 import { XFAField, XFAFieldAppearance, XFASubform } from '../types/pdf';
@@ -42,6 +43,7 @@ import { extractXfaPackets, parseXfaTemplate } from '../utils/xfaEngine';
 import { PDFDocument } from 'pdf-lib';
 import { FieldDetectionModal } from './FieldDetectionModal';
 import { RegularPdfConvertModal } from './RegularPdfConvertModal';
+import { PrintScaleModal } from './PrintScaleModal';
 
 export type CanvasViewMode = 'single' | 'two_pages' | 'compare_pdfs';
 
@@ -128,6 +130,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
   const [showQuickNav, setShowQuickNav] = useState(true);
   const [isFieldDetectionOpen, setIsFieldDetectionOpen] = useState(false);
   const [isConvertRegularPdfOpen, setIsConvertRegularPdfOpen] = useState(false);
+  const [isPrintScaleOpen, setIsPrintScaleOpen] = useState(false);
 
   // Freehand Drawing Layer & Annotation State
   const [pageAnnotations, setPageAnnotations] = useState<PageAnnotations>(() => {
@@ -879,6 +882,16 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
             </button>
           </div>
 
+          {/* Scale Printout Between Paper Sizes */}
+          <button
+            onClick={() => setIsPrintScaleOpen(true)}
+            className="px-2.5 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer bg-slate-800 border-slate-700 hover:border-sky-500/60 text-slate-300 hover:text-white"
+            title="Scale printout from one printer paper size to another (Letter, A4, Legal, Tabloid)"
+          >
+            <Printer className="w-3.5 h-3.5 text-sky-400" />
+            <span className="hidden sm:inline">Scale Print</span>
+          </button>
+
           {/* Form Field Auto-Detection */}
           <button
             onClick={() => setIsFieldDetectionOpen(true)}
@@ -1269,6 +1282,16 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
       <RegularPdfConvertModal
         isOpen={isConvertRegularPdfOpen}
         onClose={() => setIsConvertRegularPdfOpen(false)}
+        pdfBytes={pdfBytes}
+        filename={filename}
+        fields={fields}
+        pageAnnotations={pageAnnotations}
+      />
+
+      {/* Scale Printout Between Printer Paper Sizes Modal */}
+      <PrintScaleModal
+        isOpen={isPrintScaleOpen}
+        onClose={() => setIsPrintScaleOpen(false)}
         pdfBytes={pdfBytes}
         filename={filename}
         fields={fields}

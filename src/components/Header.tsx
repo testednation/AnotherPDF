@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Download, FolderArchive, ShieldCheck, FileSpreadsheet, Layers, Keyboard, Network, Sparkles } from 'lucide-react';
+import { FileText, Download, FolderArchive, ShieldCheck, FileSpreadsheet, Layers, Keyboard, Network, Sparkles, Printer } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { GlobalFieldSearch } from './GlobalFieldSearch';
 import { XFAField } from '../types/pdf';
@@ -9,6 +9,7 @@ interface HeaderProps {
   setActiveTab: (tab: 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch' | 'fieldmap' | 'assistant') => void;
   onExportPdf: () => void;
   onDownloadAllResources: () => void;
+  onOpenPrintScale?: () => void;
   isExportingPdf: boolean;
   isExportingZip: boolean;
   hasXfa: boolean;
@@ -29,6 +30,7 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   onExportPdf,
   onDownloadAllResources,
+  onOpenPrintScale,
   isExportingPdf,
   isExportingZip,
   hasXfa,
@@ -279,6 +281,17 @@ export const Header: React.FC<HeaderProps> = ({
           <FolderArchive className="w-3.5 h-3.5 text-sky-400" />
           <span>{isExportingZip ? 'Packaging ZIP...' : 'Zip Resources'}</span>
         </button>
+
+        {onOpenPrintScale && (
+          <button
+            onClick={onOpenPrintScale}
+            title="Scale Printout Between Printer Paper Sizes (Letter ↔ A4 / Legal / Tabloid)"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-sky-200 bg-sky-950/70 hover:bg-sky-900 border border-sky-700/70 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <Printer className="w-3.5 h-3.5 text-sky-400" />
+            <span>Scale Print</span>
+          </button>
+        )}
 
         <button
           onClick={onExportPdf}

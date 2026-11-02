@@ -54,6 +54,7 @@ import { BatchProcessorView } from './BatchProcessorView';
 import { XmlEditor } from './XmlEditor';
 import { FieldMapPanel } from './FieldMapPanel';
 import { SmartFormAssistant } from './SmartFormAssistant';
+import { PrintScaleModal } from './PrintScaleModal';
 import { PreflightSummary } from '../types/preflight';
 
 interface AcrobatWorkspaceProps {
@@ -136,8 +137,9 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
   // Field highlights state (Acrobat purple/blue field boundary box)
   const [highlightFields, setHighlightFields] = useState(true);
 
-  // URL modal
+  // URL modal & Print Scale modal
   const [urlModalOpen, setUrlModalOpen] = useState(false);
+  const [printScaleModalOpen, setPrintScaleModalOpen] = useState(false);
   const [urlInput, setUrlInput] = useState('https://www.canada.ca/content/dam/pch/documents/services/funding/book-fund/cBF-FinRepDatFrm-eng.pdf');
 
   // Close menus on outside click
@@ -270,6 +272,16 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                 >
                   <span>Open from Web URL...</span>
                   <span className="text-[10px] font-mono text-slate-500">URL</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setPrintScaleModalOpen(true);
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-1.5 hover:bg-[#3a3a3a] text-sky-300 flex items-center justify-between"
+                >
+                  <span>Scale Printout Paper Size...</span>
+                  <span className="text-[10px] font-mono text-sky-400">Ctrl+P</span>
                 </button>
                 <button
                   onClick={() => {
@@ -524,7 +536,7 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
           <button onClick={onExportPdf} disabled={isExportingPdf} className="p-1.5 rounded hover:bg-[#444] text-slate-300 hover:text-white transition-colors disabled:opacity-50" title="Save PDF (Ctrl+S)">
             <Save className="w-4 h-4" />
           </button>
-          <button onClick={() => window.print()} className="p-1.5 rounded hover:bg-[#444] text-slate-300 hover:text-white transition-colors" title="Print Document">
+          <button onClick={() => setPrintScaleModalOpen(true)} className="p-1.5 rounded hover:bg-[#444] text-sky-400 hover:text-sky-300 transition-colors" title="Scale Printout Between Printer Paper Sizes & Print">
             <Printer className="w-4 h-4" />
           </button>
 
@@ -630,6 +642,16 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
           >
             <FileText className="w-3.5 h-3.5" />
             <span>Regular PDF</span>
+          </button>
+
+          {/* Scale Printout Size Quick Action */}
+          <button
+            onClick={() => setPrintScaleModalOpen(true)}
+            className="px-2.5 py-1 rounded bg-sky-950/90 hover:bg-sky-900 border border-sky-700/80 text-sky-200 flex items-center gap-1.5 text-xs transition-colors shadow-xs"
+            title="Scale Printout Between Printer Paper Sizes (Letter ↔ A4 / Legal / Tabloid)"
+          >
+            <Printer className="w-3.5 h-3.5 text-sky-400" />
+            <span>Scale Print Size</span>
           </button>
 
           <button
@@ -1204,6 +1226,16 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
           </div>
         </div>
       )}
+
+      {/* Scale Printout Between Printer Paper Sizes Modal */}
+      <PrintScaleModal
+        isOpen={printScaleModalOpen}
+        onClose={() => setPrintScaleModalOpen(false)}
+        pdfBytes={pdfBytes}
+        filename={filename}
+        fields={fields}
+        onShowToast={onShowToast}
+      />
     </div>
   );
 };

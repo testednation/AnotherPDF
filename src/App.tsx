@@ -29,6 +29,7 @@ import { extractAllPdfResources, downloadAllResourcesAsZip } from './utils/resou
 import { createSampleXfaPdf, createSampleMediaPdf, createCanadaBookFundXfaPdf } from './utils/samplePdfs';
 import { AcrobatWorkspace } from './components/AcrobatWorkspace';
 import { SmartFormAssistant } from './components/SmartFormAssistant';
+import { PrintScaleModal } from './components/PrintScaleModal';
 import { runPreflightAudit } from './utils/preflightEngine';
 import {
   XFASubform,
@@ -62,6 +63,7 @@ export default function App() {
     return 'acrobat';
   });
   const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
+  const [isPrintScaleModalOpen, setIsPrintScaleModalOpen] = useState(false);
   const [urlModalInput, setUrlModalInput] = useState('https://www.canada.ca/content/dam/pch/documents/services/funding/book-fund/cBF-FinRepDatFrm-eng.pdf');
 
   useEffect(() => {
@@ -742,6 +744,7 @@ export default function App() {
         setActiveTab={setActiveTab}
         onExportPdf={handleExportPdf}
         onDownloadAllResources={handleDownloadAllZip}
+        onOpenPrintScale={() => setIsPrintScaleModalOpen(true)}
         isExportingPdf={isExportingPdf}
         isExportingZip={isExportingZip}
         hasXfa={hasXfa}
@@ -1011,6 +1014,18 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Scale Printout Between Printer Paper Sizes Modal */}
+      {pdfBytes && (
+        <PrintScaleModal
+          isOpen={isPrintScaleModalOpen}
+          onClose={() => setIsPrintScaleModalOpen(false)}
+          pdfBytes={pdfBytes}
+          filename={filename}
+          fields={allFields}
+          onShowToast={showToast}
+        />
       )}
     </div>
   );
