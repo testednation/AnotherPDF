@@ -58,6 +58,7 @@ interface ConversionViewProps {
   pageAnnotations?: PageAnnotations;
   onOpenFieldDetection?: () => void;
   onOpenConvertRegularPdf?: () => void;
+  onLoadConvertedPdf?: (bytes: Uint8Array, filename: string) => void;
   onShowToast?: (msg: string) => void;
 }
 
@@ -72,6 +73,7 @@ export const ConversionView: React.FC<ConversionViewProps> = ({
   pageAnnotations = {},
   onOpenFieldDetection,
   onOpenConvertRegularPdf,
+  onLoadConvertedPdf,
   onShowToast,
 }) => {
   const [isConvertRegularModalOpen, setIsConvertRegularModalOpen] = useState(false);
@@ -261,26 +263,25 @@ export const ConversionView: React.FC<ConversionViewProps> = ({
             </div>
 
             <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-              <span>Universal Standard PDF Conversion &amp; Field Recognition</span>
+              <span>XFA PDF → Standard PDF Conversion Tool (Best-Effort Field &amp; Data Retention)</span>
             </h2>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              Adobe LiveCycle Dynamic XFA forms cannot be viewed in standard PDF viewers (Chrome, Safari, Edge, Firefox, iOS, Android, and macOS Preview).
-              Convert your form into a universal <strong className="text-white">Interactive Standard AcroForm PDF</strong> with fillable fields, or a <strong className="text-white">Certified Flattened PDF</strong> with all values, barcodes, and handwritten signatures burned in.
+              Convert proprietary Adobe LiveCycle XFA forms (either the active document or any uploaded <code className="text-slate-200 font-mono">.pdf</code>) into an <strong className="text-white">ISO 32000-1 Standard PDF</strong>. Strips <code className="text-slate-200 font-mono">/XFA</code> streams, replaces <em className="text-amber-300">"Please wait..."</em> shells, and makes a best-effort conversion of all form fields and values into <strong className="text-white">Standard AcroForm Widgets</strong>, <strong className="text-white">Hybrid Best-Effort</strong>, or <strong className="text-white">Flattened Standard PDF</strong>.
             </p>
 
             <div className="flex flex-wrap items-center gap-4 pt-1 text-[11px] text-slate-400 font-mono">
               <div className="flex items-center gap-1.5">
                 <Smartphone className="w-3.5 h-3.5 text-sky-400" />
-                <span>Mobile &amp; Web Compatible</span>
+                <span>Retains Form Fields &amp; Values</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Monitor className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Zero Adobe Software Required</span>
+                <span>AcroForm · Hybrid · Flattened</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                <span>100% Private Offline Processing</span>
+                <span>Per-Field Retention Audit</span>
               </div>
             </div>
           </div>
@@ -298,7 +299,7 @@ export const ConversionView: React.FC<ConversionViewProps> = ({
               className="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 active:bg-red-700 rounded-lg transition-all shadow-md hover:shadow-red-950/50 cursor-pointer disabled:opacity-50"
             >
               <FileCheck className="w-4 h-4" />
-              <span>Convert to Regular PDF</span>
+              <span>XFA → Standard PDF Tool</span>
             </button>
 
             <button
@@ -990,6 +991,7 @@ export const ConversionView: React.FC<ConversionViewProps> = ({
           fields={fields}
           pageAnnotations={pageAnnotations}
           onShowToast={notify}
+          onLoadConvertedPdf={onLoadConvertedPdf}
         />
       )}
 

@@ -54,6 +54,7 @@ interface PdfCanvasViewerProps {
   fields: XFAField[];
   subforms?: XFASubform[];
   targetFieldId?: string | null;
+  targetFieldTrigger?: number;
   onFieldValueChange: (fieldId: string, newValue: string) => void;
   onUpdateFieldAppearance: (fieldId: string, appearance: XFAFieldAppearance, applyToAllOfType: boolean) => void;
   onResetFieldAppearance: (fieldId: string) => void;
@@ -68,6 +69,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
   fields,
   subforms = [],
   targetFieldId = null,
+  targetFieldTrigger = 0,
   onFieldValueChange,
   onUpdateFieldAppearance,
   onResetFieldAppearance,
@@ -99,9 +101,30 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
   const [isSecondaryLoading, setIsSecondaryLoading] = useState(false);
   const [secondaryRenderError, setSecondaryRenderError] = useState<string | null>(null);
 
+  // Responsive default zoom scale helper (fits mobile phones cleanly without horizontal clipping)
+  const getResponsiveDefaultScale = useCallback((mode: CanvasViewMode = 'single') => {
+    if (typeof window === 'undefined') return mode === 'single' ? 1.1 : 0.95;
+    if (window.innerWidth < 480) return 0.56;
+    if (window.innerWidth < 768) return 0.74;
+    if (window.innerWidth < 1024) return 0.9;
+    return mode === 'single' ? 1.1 : 0.95;
+  }, []);
+
   // Zoom scale
-  const [primaryScale, setPrimaryScale] = useState(1.1);
-  const [secondaryScale, setSecondaryScale] = useState(1.1);
+  const [primaryScale, setPrimaryScale] = useState<number>(() => {
+    if (typeof window === 'undefined') return 1.1;
+    if (window.innerWidth < 480) return 0.56;
+    if (window.innerWidth < 768) return 0.74;
+    if (window.innerWidth < 1024) return 0.9;
+    return 1.1;
+  });
+  const [secondaryScale, setSecondaryScale] = useState<number>(() => {
+    if (typeof window === 'undefined') return 1.1;
+    if (window.innerWidth < 480) return 0.56;
+    if (window.innerWidth < 768) return 0.74;
+    if (window.innerWidth < 1024) return 0.9;
+    return 1.1;
+  });
 
   // Canvas Refs & Dimensions
   const primaryCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -121,13 +144,18 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
     origH: 792,
   });
 
-  // Field Recognition, Quick Nav & Inspector
+  // Field Recognition, Quick Nav & Inspector (default closed on mobile/tablet so PDF canvas is immediately visible)
   const [showBoundaries, setShowBoundaries] = useState(true);
   const [showBadges, setShowBadges] = useState(true);
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
-  const [showInspector, setShowInspector] = useState(true);
-  const [showQuickNav, setShowQuickNav] = useState(true);
+  const [showInspector, setShowInspector] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+  );
+  const [showQuickNav, setShowQuickNav] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+  );
+  const [showMobileViewerOptions, setShowMobileViewerOptions] = useState(false);
   const [isFieldDetectionOpen, setIsFieldDetectionOpen] = useState(false);
   const [isConvertRegularPdfOpen, setIsConvertRegularPdfOpen] = useState(false);
   const [isPrintScaleOpen, setIsPrintScaleOpen] = useState(false);
@@ -289,20 +317,31 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Jump directly to an XFA form field from Quick Nav tree
+  // Jump directly to an XFA form field from Quick Nav tree or Global Search
   const handleJumpToField = useCallback((field: XFAField) => {
     const targetPage = field.bounds?.pageNumber || 1;
     setPrimaryPage(targetPage);
     setSelectedFieldId(field.id);
+    if (typeFilter !== 'all' && typeFilter !== field.type) {
+      setTypeFilter('all');
+    }
     if (!showBoundaries) {
       setShowBoundaries(true);
     }
-    if (!showInspector) {
+    if (!showInspector && (typeof window === 'undefined' || window.innerWidth >= 1024)) {
       setShowInspector(true);
     }
-  }, [showBoundaries, showInspector]);
 
-  // Synchronize target field from external jump (e.g. Header Global Search)
+    // Smoothly scroll the field overlay box into the center of the viewport after render
+    setTimeout(() => {
+      const overlayEl = document.getElementById(`canvas-field-${field.id}`);
+      if (overlayEl) {
+        overlayEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      }
+    }, 140);
+  }, [showBoundaries, showInspector, typeFilter]);
+
+  // Synchronize target field from external jump (e.g. Header or Acrobat Global Search)
   useEffect(() => {
     if (targetFieldId) {
       const match = fields.find(f => f.id === targetFieldId) || secondaryFields.find(f => f.id === targetFieldId);
@@ -310,7 +349,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
         handleJumpToField(match);
       }
     }
-  }, [targetFieldId, fields, secondaryFields, handleJumpToField]);
+  }, [targetFieldId, targetFieldTrigger, fields, secondaryFields, handleJumpToField]);
 
   const comparisonFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -555,7 +594,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
   };
 
   const handleResetZoom = () => {
-    const defaultScale = viewMode === 'single' ? 1.2 : 0.95;
+    const defaultScale = getResponsiveDefaultScale(viewMode);
     setPrimaryScale(defaultScale);
     setSecondaryScale(defaultScale);
   };
@@ -615,16 +654,12 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
   // Auto-switch zoom to fit side-by-side when activating split view
   const handleModeChange = (mode: CanvasViewMode) => {
     setViewMode(mode);
-    if (mode !== 'single') {
-      // Comfortable scale for dual pane
-      setPrimaryScale(0.95);
-      setSecondaryScale(0.95);
-      if (mode === 'compare_pdfs' && !secondaryPdfBytes) {
-        // Auto-load sample revision if not loaded yet
-        handleLoadSampleComparison();
-      }
-    } else {
-      setPrimaryScale(1.2);
+    const nextScale = getResponsiveDefaultScale(mode);
+    setPrimaryScale(nextScale);
+    setSecondaryScale(nextScale);
+    if (mode === 'compare_pdfs' && !secondaryPdfBytes) {
+      // Auto-load sample revision if not loaded yet
+      handleLoadSampleComparison();
     }
   };
 
@@ -664,277 +699,305 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
   }, [primaryPage, primaryNumPages, secondaryPage, secondaryNumPages, viewMode, syncPageTurns]);
 
   return (
-    <div className="max-w-7xl mx-auto py-5 px-4 sm:px-6 space-y-4">
-      {/* Top Banner Notice */}
+    <div className="max-w-7xl mx-auto py-2.5 sm:py-5 px-2 sm:px-6 space-y-2.5 sm:space-y-4">
+      {/* Top Banner Notice (Compact on Mobile, Detailed on Desktop) */}
       {hasXfa && (
-        <div className="bg-gradient-to-r from-sky-950/70 via-slate-900 to-amber-950/50 border border-sky-600/50 rounded-xl p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs shadow-md">
-          <div className="flex items-start gap-2.5">
-            <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <div className="text-slate-300">
-              <strong className="text-sky-300 font-semibold">LiveCycle Dynamic XFA Recognition Active:</strong>{' '}
+        <div className="bg-gradient-to-r from-sky-950/70 via-slate-900 to-amber-950/50 border border-sky-600/50 rounded-xl p-2.5 sm:p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-2 sm:gap-3 text-xs shadow-md">
+          <div className="flex items-center sm:items-start gap-2 min-w-0">
+            <Sparkles className="w-4 h-4 text-amber-400 shrink-0 sm:mt-0.5" />
+            <div className="text-slate-300 truncate sm:whitespace-normal">
+              <strong className="text-sky-300 font-semibold">
+                <span className="sm:hidden">XFA Engine:</span>
+                <span className="hidden sm:inline">LiveCycle Dynamic XFA Recognition Active:</span>
+              </strong>{' '}
               {fields.length > 0 ? (
                 <span>
-                  All <strong className="text-white font-mono bg-sky-950 px-1.5 py-0.5 rounded border border-sky-700">{fields.length} form fields</strong> across all subforms are extracted and mapped. If this file shows <em>"Please wait..."</em> in other viewers, click <strong>"Convert to Regular PDF"</strong> to bake into standard ISO 32000-1 AcroForm.
+                  <strong className="text-white font-mono bg-sky-950 px-1.5 py-0.5 rounded border border-sky-700">{fields.length} fields</strong>
+                  <span className="hidden sm:inline">
+                    {' '}extracted across all subforms. Click <strong>"Convert to Regular PDF"</strong> to bake into standard ISO 32000-1 AcroForm.
+                  </span>
                 </span>
               ) : (
                 <span>
-                  Dynamic XML packets loaded. Click <strong>"Detect Fields"</strong> to run multi-tier pattern analysis.
+                  Dynamic XML loaded. Tap <strong>Detect Fields</strong>.
                 </span>
               )}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto shrink-0">
-            <button
-              onClick={() => setIsFieldDetectionOpen(true)}
-              className="px-2.5 py-1 text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
-              title="Run multi-tier field recognition across all document pages"
-            >
-              <Scan className="w-3.5 h-3.5 text-sky-400" />
-              <span>Detect Fields ({fields.length})</span>
-            </button>
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar shrink-0">
             <button
               onClick={() => setIsConvertRegularPdfOpen(true)}
-              className="px-2.5 py-1 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+              className="px-2.5 py-1 text-xs font-semibold text-white bg-red-600 hover:bg-red-500 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
               title="Convert dynamic XFA to regular ISO 32000-1 PDF (AcroForm or Flattened)"
             >
               <FileCheck className="w-3.5 h-3.5" />
-              <span>Convert to Regular PDF</span>
+              <span>Regular PDF</span>
+            </button>
+            <button
+              onClick={onSwitchToForm}
+              className="px-2.5 py-1 text-xs font-semibold text-slate-950 bg-sky-400 hover:bg-sky-300 rounded-md transition-colors cursor-pointer shrink-0"
+            >
+              Fill Form
+            </button>
+            <button
+              onClick={() => setIsFieldDetectionOpen(true)}
+              className="px-2 py-1 text-xs font-medium text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md transition-colors flex items-center gap-1 cursor-pointer shrink-0"
+              title="Run multi-tier field recognition across all document pages"
+            >
+              <Scan className="w-3.5 h-3.5 text-sky-400" />
+              <span>Detect ({fields.length})</span>
             </button>
             <button
               onClick={() => setIsPrintScaleOpen(true)}
-              className="px-2.5 py-1 text-xs font-medium text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-800 rounded-md transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="hidden sm:flex px-2.5 py-1 text-xs font-medium text-sky-300 bg-sky-950/80 hover:bg-sky-900 border border-sky-800 rounded-md transition-colors items-center gap-1.5 cursor-pointer shrink-0"
               title="Scale printout between paper sizes"
             >
               <Printer className="w-3.5 h-3.5 text-sky-400" />
               <span>Scale Printout</span>
-            </button>
-            <button
-              onClick={onSwitchToForm}
-              className="px-3 py-1 text-xs font-semibold text-slate-950 bg-sky-400 hover:bg-sky-300 rounded-md transition-colors cursor-pointer"
-            >
-              Visual Form Tab
             </button>
           </div>
         </div>
       )}
 
       {/* Main Viewer Controls Toolbar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-md">
-        {/* Left: View Mode Selector (Single vs Two Pages vs Compare) */}
-        <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-lg border border-slate-800 text-xs">
-          <button
-            onClick={() => handleModeChange('single')}
-            className={`px-3 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
-              viewMode === 'single'
-                ? 'bg-sky-600 text-white shadow-xs'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-            title="Single page focused view"
-          >
-            <Square className="w-3.5 h-3.5" />
-            <span>Single Page</span>
-          </button>
-
-          <button
-            onClick={() => handleModeChange('two_pages')}
-            className={`px-3 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
-              viewMode === 'two_pages'
-                ? 'bg-sky-600 text-white shadow-xs'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-            title="View two pages of this PDF side-by-side"
-          >
-            <Columns className="w-3.5 h-3.5" />
-            <span>Two Pages (Spread)</span>
-            {primaryNumPages > 1 && (
-              <span className="text-[10px] px-1 bg-sky-950 text-sky-300 rounded font-mono">
-                {primaryNumPages} pgs
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => handleModeChange('compare_pdfs')}
-            className={`px-3 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
-              viewMode === 'compare_pdfs'
-                ? 'bg-sky-600 text-white shadow-xs'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-            title="Compare two different PDFs side-by-side"
-          >
-            <FileDiff className="w-3.5 h-3.5" />
-            <span>Compare 2 PDFs</span>
-            <span className="text-[10px] px-1.5 py-0.2 bg-purple-950/80 text-purple-300 border border-purple-800/80 rounded font-mono">
-              Diff Mode
-            </span>
-          </button>
-        </div>
-
-        {/* Center: Recognition Toggles & Sync options */}
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          {/* Quick Nav Hierarchy Toggle */}
-          {hasXfa && (
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-2 sm:px-4 sm:py-2.5 space-y-2 shadow-md">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Left: View Mode Selector (Single vs Two Pages vs Compare) */}
+          <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-950/80 p-1 rounded-lg border border-slate-800 text-xs">
             <button
-              onClick={() => setShowQuickNav(!showQuickNav)}
-              className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
-                showQuickNav
-                  ? 'bg-sky-950/70 border-sky-600/70 text-sky-300'
-                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+              onClick={() => handleModeChange('single')}
+              className={`px-2 sm:px-3 py-1 rounded-md font-medium transition-colors flex items-center gap-1 sm:gap-1.5 cursor-pointer ${
+                viewMode === 'single'
+                  ? 'bg-sky-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
-              title="Toggle Quick Navigation hierarchical field panel"
+              title="Single page focused view"
             >
-              <FolderTree className="w-3.5 h-3.5 text-sky-400" />
-              <span>Quick Nav</span>
-              <span className="text-[10px] px-1.5 py-0.2 bg-slate-800 text-sky-300 rounded font-mono">
-                {fields.length}
-              </span>
+              <Square className="w-3.5 h-3.5" />
+              <span>Single</span>
             </button>
-          )}
 
-          {/* Synchronized Page Turning (when in side-by-side mode) */}
-          {viewMode !== 'single' && (
             <button
-              onClick={() => setSyncPageTurns(!syncPageTurns)}
-              className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
-                syncPageTurns
-                  ? 'bg-indigo-950/70 border-indigo-600/70 text-indigo-300'
-                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+              onClick={() => handleModeChange('two_pages')}
+              className={`px-2 sm:px-3 py-1 rounded-md font-medium transition-colors flex items-center gap-1 sm:gap-1.5 cursor-pointer ${
+                viewMode === 'two_pages'
+                  ? 'bg-sky-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
-              title="Synchronize page navigation across both panes"
+              title="View two pages of this PDF side-by-side"
             >
-              {syncPageTurns ? <Link2 className="w-3.5 h-3.5 text-indigo-400" /> : <Link2Off className="w-3.5 h-3.5 text-slate-500" />}
-              <span>Sync Pages</span>
+              <Columns className="w-3.5 h-3.5" />
+              <span>2 Pages</span>
+              {primaryNumPages > 1 && (
+                <span className="hidden md:inline text-[10px] px-1 bg-sky-950 text-sky-300 rounded font-mono">
+                  {primaryNumPages}p
+                </span>
+              )}
             </button>
-          )}
 
-          {/* Highlight Boundaries Toggle */}
-          {hasXfa && (
             <button
-              onClick={() => setShowBoundaries(!showBoundaries)}
-              className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
-                showBoundaries
-                  ? 'bg-sky-950/70 border-sky-600/70 text-sky-300'
-                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+              onClick={() => handleModeChange('compare_pdfs')}
+              className={`px-2 sm:px-3 py-1 rounded-md font-medium transition-colors flex items-center gap-1 sm:gap-1.5 cursor-pointer ${
+                viewMode === 'compare_pdfs'
+                  ? 'bg-sky-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
-              title="Toggle bounding box highlights around XFA form fields"
+              title="Compare two different PDFs side-by-side"
             >
-              <Layers className="w-3.5 h-3.5 text-sky-400" />
-              <span>Boundaries</span>
-            </button>
-          )}
-
-          {/* Type Badges Toggle */}
-          {hasXfa && (
-            <button
-              onClick={() => setShowBadges(!showBadges)}
-              className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors cursor-pointer ${
-                showBadges
-                  ? 'bg-sky-950/70 border-sky-600/70 text-sky-300'
-                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
-              }`}
-              title="Show or hide field type labels on boundaries"
-            >
-              Type Badges
-            </button>
-          )}
-
-          {/* Filter by Field Type */}
-          {hasXfa && (
-            <div className="flex items-center gap-1 bg-slate-950/70 border border-slate-800 rounded-md px-2 py-0.5">
-              <Filter className="w-3 h-3 text-slate-500" />
-              <select
-                value={typeFilter}
-                onChange={e => setTypeFilter(e.target.value)}
-                className="bg-transparent text-slate-300 text-xs focus:outline-none cursor-pointer"
-              >
-                <option value="all" className="bg-slate-900">All Fields</option>
-                <option value="text" className="bg-slate-900">Text Fields</option>
-                <option value="check" className="bg-slate-900">Checkboxes</option>
-                <option value="choice" className="bg-slate-900">Dropdowns</option>
-                <option value="numeric" className="bg-slate-900">Numeric</option>
-                <option value="date" className="bg-slate-900">Dates</option>
-                <option value="signature" className="bg-slate-900">Signatures</option>
-              </select>
-            </div>
-          )}
-        </div>
-
-        {/* Right: Zoom Controls & Inspector Toggle */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={handleZoomOut}
-              className="p-1.5 text-slate-300 hover:text-slate-100 hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
-              title="Zoom Out"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
-
-            <span className="text-xs font-mono text-slate-400 tabular-nums px-1">
-              {Math.round(primaryScale * 100)}%
-            </span>
-
-            <button
-              onClick={handleZoomIn}
-              className="p-1.5 text-slate-300 hover:text-slate-100 hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
-              title="Zoom In"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={handleResetZoom}
-              className="p-1.5 text-slate-300 hover:text-slate-100 hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
-              title="Reset Zoom"
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
+              <FileDiff className="w-3.5 h-3.5" />
+              <span>Diff</span>
             </button>
           </div>
 
-          {/* Scale Printout Between Paper Sizes */}
-          <button
-            onClick={() => setIsPrintScaleOpen(true)}
-            className="px-2.5 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer bg-slate-800 border-slate-700 hover:border-sky-500/60 text-slate-300 hover:text-white"
-            title="Scale printout from one printer paper size to another (Letter, A4, Legal, Tabloid)"
-          >
-            <Printer className="w-3.5 h-3.5 text-sky-400" />
-            <span className="hidden sm:inline">Scale Print</span>
-          </button>
+          {/* Right: Zoom Controls, Quick Nav, Inspector & Mobile Options Toggle */}
+          <div className="flex items-center gap-1 sm:gap-2 ml-auto">
+            <div className="flex items-center gap-0.5 bg-slate-950/60 border border-slate-800 rounded-lg px-1 py-0.5">
+              <button
+                onClick={handleZoomOut}
+                className="p-1 text-slate-300 hover:text-slate-100 hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                title="Zoom Out"
+              >
+                <ZoomOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              </button>
 
-          {/* Form Field Auto-Detection */}
-          <button
-            onClick={() => setIsFieldDetectionOpen(true)}
-            className="px-2.5 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer bg-slate-800 border-slate-700 hover:border-sky-500/60 text-slate-300 hover:text-white"
-            title="Scan and detect all form fields across pages (XFA, AcroForm & Heuristics)"
-          >
-            <Scan className="w-3.5 h-3.5 text-sky-400" />
-            <span className="hidden sm:inline">Detect Fields</span>
-          </button>
+              <span className="text-[11px] sm:text-xs font-mono text-slate-300 tabular-nums px-1">
+                {Math.round(primaryScale * 100)}%
+              </span>
 
-          {/* Convert XFA to Universal Regular PDF */}
-          <button
-            onClick={() => setIsConvertRegularPdfOpen(true)}
-            className="px-2.5 py-1 rounded-md border text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer bg-red-600/90 hover:bg-red-500 border-red-500 text-white shadow-xs"
-            title="Convert dynamic XFA to regular ISO 32000-1 PDF (AcroForm or Flattened)"
-          >
-            <FileCheck className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Convert PDF</span>
-          </button>
+              <button
+                onClick={handleZoomIn}
+                className="p-1 text-slate-300 hover:text-slate-100 hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                title="Zoom In"
+              >
+                <ZoomIn className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              </button>
 
-          {hasXfa && (
+              <button
+                onClick={handleResetZoom}
+                className="p-1 text-slate-300 hover:text-slate-100 hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                title="Fit to Screen / Reset Zoom"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Quick Nav Hierarchy Toggle */}
+            {hasXfa && (
+              <button
+                onClick={() => setShowQuickNav(!showQuickNav)}
+                className={`px-2 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer ${
+                  showQuickNav
+                    ? 'bg-sky-950/80 border-sky-600/80 text-sky-300'
+                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
+                }`}
+                title="Toggle Quick Navigation hierarchical field panel"
+              >
+                <FolderTree className="w-3.5 h-3.5 text-sky-400" />
+                <span className="hidden sm:inline">Fields</span>
+                <span className="text-[10px] px-1 bg-slate-900 text-sky-300 rounded font-mono">
+                  {fields.length}
+                </span>
+              </button>
+            )}
+
+            {/* Inspector Toggle */}
+            {hasXfa && (
+              <button
+                onClick={() => setShowInspector(!showInspector)}
+                className={`px-2 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer ${
+                  showInspector
+                    ? 'bg-sky-950 border-sky-600 text-sky-300'
+                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
+                }`}
+                title="Toggle Field Properties & Appearance Inspector"
+              >
+                <Sliders className="w-3.5 h-3.5 text-sky-400" />
+                <span className="hidden sm:inline">Inspector</span>
+              </button>
+            )}
+
+            {/* Mobile Filter & View Options Toggle (md:hidden) */}
             <button
-              onClick={() => setShowInspector(!showInspector)}
-              className={`p-1.5 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
-                showInspector
-                  ? 'bg-sky-950 border-sky-600 text-sky-300'
-                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+              onClick={() => setShowMobileViewerOptions(prev => !prev)}
+              className={`md:hidden px-2 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer ${
+                showMobileViewerOptions
+                  ? 'bg-amber-950/80 border-amber-500/70 text-amber-200'
+                  : 'bg-slate-800 border-slate-700 text-slate-300'
               }`}
-              title="Toggle Field Properties & Appearance Inspector"
+              title="More Viewer & Filter Options"
             >
-              <Sliders className="w-4 h-4" />
-              <span className="hidden sm:inline">Inspector</span>
+              <Filter className="w-3.5 h-3.5 text-amber-400" />
+              <span>Options</span>
             </button>
-          )}
+          </div>
+        </div>
+
+        {/* Secondary Controls Row: Always visible on md+, collapsible on mobile */}
+        <div
+          className={`${
+            showMobileViewerOptions ? 'flex' : 'hidden md:flex'
+          } flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80 text-xs`}
+        >
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            {/* Synchronized Page Turning (when in side-by-side mode) */}
+            {viewMode !== 'single' && (
+              <button
+                onClick={() => setSyncPageTurns(!syncPageTurns)}
+                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  syncPageTurns
+                    ? 'bg-indigo-950/70 border-indigo-600/70 text-indigo-300'
+                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+                }`}
+                title="Synchronize page navigation across both panes"
+              >
+                {syncPageTurns ? <Link2 className="w-3.5 h-3.5 text-indigo-400" /> : <Link2Off className="w-3.5 h-3.5 text-slate-500" />}
+                <span>Sync Pages</span>
+              </button>
+            )}
+
+            {/* Highlight Boundaries Toggle */}
+            {hasXfa && (
+              <button
+                onClick={() => setShowBoundaries(!showBoundaries)}
+                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  showBoundaries
+                    ? 'bg-sky-950/70 border-sky-600/70 text-sky-300'
+                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+                }`}
+                title="Toggle bounding box highlights around XFA form fields"
+              >
+                <Layers className="w-3.5 h-3.5 text-sky-400" />
+                <span>Boundaries</span>
+              </button>
+            )}
+
+            {/* Type Badges Toggle */}
+            {hasXfa && (
+              <button
+                onClick={() => setShowBadges(!showBadges)}
+                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors cursor-pointer ${
+                  showBadges
+                    ? 'bg-sky-950/70 border-sky-600/70 text-sky-300'
+                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+                }`}
+                title="Show or hide field type labels on boundaries"
+              >
+                Type Badges
+              </button>
+            )}
+
+            {/* Filter by Field Type */}
+            {hasXfa && (
+              <div className="flex items-center gap-1 bg-slate-950/70 border border-slate-800 rounded-md px-2 py-0.5">
+                <Filter className="w-3 h-3 text-slate-500" />
+                <select
+                  value={typeFilter}
+                  onChange={e => setTypeFilter(e.target.value)}
+                  className="bg-transparent text-slate-300 text-xs focus:outline-none cursor-pointer"
+                >
+                  <option value="all" className="bg-slate-900">All Fields</option>
+                  <option value="text" className="bg-slate-900">Text Fields</option>
+                  <option value="check" className="bg-slate-900">Checkboxes</option>
+                  <option value="choice" className="bg-slate-900">Dropdowns</option>
+                  <option value="numeric" className="bg-slate-900">Numeric</option>
+                  <option value="date" className="bg-slate-900">Dates</option>
+                  <option value="signature" className="bg-slate-900">Signatures</option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            {/* Scale Printout Between Paper Sizes */}
+            <button
+              onClick={() => setIsPrintScaleOpen(true)}
+              className="px-2.5 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer bg-slate-800 border-slate-700 hover:border-sky-500/60 text-slate-300 hover:text-white"
+              title="Scale printout from one printer paper size to another (Letter, A4, Legal, Tabloid)"
+            >
+              <Printer className="w-3.5 h-3.5 text-sky-400" />
+              <span>Scale Print</span>
+            </button>
+
+            {/* Form Field Auto-Detection */}
+            <button
+              onClick={() => setIsFieldDetectionOpen(true)}
+              className="px-2.5 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer bg-slate-800 border-slate-700 hover:border-sky-500/60 text-slate-300 hover:text-white"
+              title="Scan and detect all form fields across pages (XFA, AcroForm & Heuristics)"
+            >
+              <Scan className="w-3.5 h-3.5 text-sky-400" />
+              <span>Detect Fields</span>
+            </button>
+
+            {/* Convert XFA to Universal Regular PDF */}
+            <button
+              onClick={() => setIsConvertRegularPdfOpen(true)}
+              className="px-2.5 py-1 rounded-md border text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer bg-red-600/90 hover:bg-red-500 border-red-500 text-white shadow-xs"
+              title="Convert dynamic XFA to regular ISO 32000-1 PDF (AcroForm or Flattened)"
+            >
+              <FileCheck className="w-3.5 h-3.5" />
+              <span>Convert PDF</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1019,16 +1082,21 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
       )}
 
       {/* Main Dual-Viewport Area */}
-      <div className="flex flex-col lg:flex-row gap-4 items-stretch min-h-[660px]">
+      <div className="flex flex-col lg:flex-row gap-3 sm:gap-4 items-stretch min-h-[420px] sm:min-h-[660px]">
         {/* Left Docked Quick Navigation Panel */}
         {hasXfa && showQuickNav && (
-          <div className="w-full lg:w-72 shrink-0 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl flex flex-col h-[600px] lg:h-auto">
+          <div className="w-full lg:w-72 shrink-0 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl flex flex-col max-h-[380px] lg:max-h-none lg:h-auto">
             <QuickNavTree
               subforms={subforms}
               fields={fields}
               selectedFieldId={selectedFieldId}
               currentPage={primaryPage}
-              onSelectField={handleJumpToField}
+              onSelectField={f => {
+                handleJumpToField(f);
+                if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+                  setShowQuickNav(false);
+                }
+              }}
               onClose={() => setShowQuickNav(false)}
             />
           </div>
@@ -1037,7 +1105,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
         {/* Left Pane (Primary Document or Page A) */}
         <div className="flex-1 min-w-0 bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden shadow-xl flex flex-col">
           {/* Left Pane Header & Page Controls */}
-          <div className="px-4 py-2 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
+          <div className="px-3 sm:px-4 py-2 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 truncate pr-2">
               <span className="font-semibold text-slate-200 truncate" title={filename}>
                 {viewMode === 'two_pages' ? `Page ${primaryPage} (Left)` : filename}
@@ -1086,7 +1154,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
           {/* Left Canvas Scroll Area */}
           <div
             onClick={() => setSelectedFieldId(null)}
-            className="flex-1 bg-slate-950 p-6 flex items-center justify-center overflow-auto shadow-inner relative min-h-[480px]"
+            className="flex-1 bg-slate-950 p-2 sm:p-6 flex items-center justify-center overflow-auto shadow-inner relative min-h-[360px] sm:min-h-[480px]"
           >
             {isPrimaryLoading && (
               <div className="text-xs text-slate-400 font-mono flex items-center gap-2">
@@ -1150,7 +1218,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
         {viewMode !== 'single' && (
           <div className="flex-1 min-w-0 bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden shadow-xl flex flex-col">
             {/* Right Pane Header & Page Controls */}
-            <div className="px-4 py-2 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
+            <div className="px-3 sm:px-4 py-2 bg-slate-900 border-b border-slate-800 flex items-center justify-between text-xs">
               <div className="flex items-center gap-2 truncate pr-2">
                 <span className="font-semibold text-slate-200 truncate" title={viewMode === 'two_pages' ? `Page ${secondaryPage} (Right)` : secondaryFilename}>
                   {viewMode === 'two_pages' ? `Page ${secondaryPage} (Right)` : secondaryFilename}
@@ -1192,7 +1260,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
             {/* Right Canvas Scroll Area */}
             <div
               onClick={() => setSelectedFieldId(null)}
-              className="flex-1 bg-slate-950 p-6 flex items-center justify-center overflow-auto shadow-inner relative min-h-[480px]"
+              className="flex-1 bg-slate-950 p-2 sm:p-6 flex items-center justify-center overflow-auto shadow-inner relative min-h-[360px] sm:min-h-[480px]"
             >
               {isSecondaryLoading && (
                 <div className="text-xs text-slate-400 font-mono flex items-center gap-2">
@@ -1263,7 +1331,12 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
               onFieldValueChange={onFieldValueChange}
               onUpdateAppearance={onUpdateFieldAppearance}
               onResetAppearance={onResetFieldAppearance}
-              onClose={() => setSelectedFieldId(null)}
+              onClose={() => {
+                setSelectedFieldId(null);
+                if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+                  setShowInspector(false);
+                }
+              }}
             />
           </div>
         )}

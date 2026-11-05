@@ -30,7 +30,18 @@ import { createSampleXfaPdf, createSampleMediaPdf, createCanadaBookFundXfaPdf } 
 import { AcrobatWorkspace } from './components/AcrobatWorkspace';
 import { SmartFormAssistant } from './components/SmartFormAssistant';
 import { PrintScaleModal } from './components/PrintScaleModal';
+import { PdfProtocolHandlerModal } from './components/PdfProtocolHandlerModal';
+import {
+  PdfProtocolSettings,
+  loadPdfProtocolSettings,
+  savePdfProtocolSettings,
+  parseIncomingProtocolUri,
+} from './utils/pdfProtocolHandler';
 import { runPreflightAudit } from './utils/preflightEngine';
+import {
+  PageOrganizationResult,
+  remapSubformsAfterPageOrganization,
+} from './utils/pageOrganizer';
 import {
   XFASubform,
   XFAPackets,
@@ -54,6 +65,7 @@ export default function App() {
   const [isExportingZip, setIsExportingZip] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [targetFieldId, setTargetFieldId] = useState<string | null>(null);
+  const [targetFieldTrigger, setTargetFieldTrigger] = useState(0);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
   const [uiMode, setUiMode] = useState<'acrobat' | 'studio'>(() => {
     if (typeof window !== 'undefined') {
@@ -64,11 +76,20 @@ export default function App() {
   });
   const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
   const [isPrintScaleModalOpen, setIsPrintScaleModalOpen] = useState(false);
+  const [isProtocolModalOpen, setIsProtocolModalOpen] = useState(false);
+  const [protocolSettings, setProtocolSettings] = useState<PdfProtocolSettings>(() =>
+    loadPdfProtocolSettings()
+  );
   const [urlModalInput, setUrlModalInput] = useState('https://www.canada.ca/content/dam/pch/documents/services/funding/book-fund/cBF-FinRepDatFrm-eng.pdf');
 
   useEffect(() => {
     localStorage.setItem('acro_ui_mode', uiMode);
   }, [uiMode]);
+
+  const handleUpdateProtocolSettings = useCallback((next: PdfProtocolSettings) => {
+    setProtocolSettings(next);
+    savePdfProtocolSettings(next);
+  }, []);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -77,10 +98,25 @@ export default function App() {
 
   const handleHeaderSelectField = (field: XFAField) => {
     setTargetFieldId(field.id);
+    setTargetFieldTrigger(c => c + 1);
     setActiveTab('preview');
     const label = field.caption || field.name;
     const page = field.bounds?.pageNumber || 1;
     showToast(`Navigated to "${label}" (Page ${page})`);
+  };
+
+  const handleEditFieldInForm = (field: XFAField) => {
+    setTargetFieldId(field.id);
+    setActiveTab('form');
+    const label = field.caption || field.name;
+    showToast(`Editing "${label}" in Visual Form Editor`);
+    setTimeout(() => {
+      const el = document.getElementById(`field-${field.id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.focus();
+      }
+    }, 140);
   };
 
   // Helper to flatten all fields across subforms
@@ -205,6 +241,151 @@ export default function App() {
     await loadPdfData(bytes, file.name);
     showToast(`Loaded ${file.name}`);
   };
+
+  // Protocol URI Handler (web+pdf://, web+xfa://, web+xdp://, or intercepted .pdf URL)
+  const handleTriggerProtocolUri = useCallback(
+    async (rawUri: string) => {
+      const parsed = parseIncomingProtocolUri(rawUri);
+
+      setProtocolSettings(prev => {
+        const next: PdfProtocolSettings = {
+          ...prev,
+          interceptedCount: (prev.interceptedCount || 0) + 1,
+          lastUpdated: new Date().toISOString(),
+        };
+        savePdfProtocolSettings(next);
+        return next;
+      });
+
+      if (parsed.builtInPreset === 'canada_book_fund') {
+        const bytes = await createCanadaBookFundXfaPdf();
+        await loadPdfData(bytes, 'cBF-FinRepDatFrm-eng.pdf');
+        showToast(
+          `Protocol Handler (${parsed.scheme}://) intercepted & opened cBF-FinRepDatFrm-eng.pdf`
+        );
+        return;
+      }
+
+      if (parsed.builtInPreset === 'attached_livecycle') {
+        const { loadAttachedLiveCycleXfaPdf } = await import('./utils/samplePdfs');
+        const { bytes, filename: attachedName } = await loadAttachedLiveCycleXfaPdf();
+        await loadPdfData(bytes, attachedName);
+        showToast(
+          `Protocol Handler (${parsed.scheme}://) intercepted & opened ${attachedName} (44 fields)`
+        );
+        return;
+      }
+
+      if (parsed.builtInPreset === 'enterprise_sample') {
+        const bytes = await createSampleXfaPdf();
+        await loadPdfData(bytes, 'Enterprise_Registry_XFA_Form.pdf');
+        showToast(
+          `Protocol Handler (${parsed.scheme}://) intercepted & opened Enterprise_Registry_XFA_Form.pdf`
+        );
+        return;
+      }
+
+      if (parsed.builtInPreset === 'media_sample') {
+        const bytes = await createSampleMediaPdf();
+        await loadPdfData(bytes, 'Technical_Assets_Media_Document.pdf');
+        showToast(
+          `Protocol Handler (${parsed.scheme}://) intercepted & opened Technical_Assets_Media_Document.pdf`
+        );
+        return;
+      }
+
+      // Attempt to fetch remote PDF URL if same-origin or CORS-enabled, with graceful fallback to XFA engine
+      try {
+        const res = await fetch(parsed.targetUrl);
+        if (res.ok) {
+          const buf = await res.arrayBuffer();
+          await loadPdfData(new Uint8Array(buf), parsed.displayFilename);
+          showToast(
+            `Protocol Handler (${parsed.scheme}://) loaded ${parsed.displayFilename}`
+          );
+          return;
+        }
+      } catch {
+        // Fallback if remote server blocks cross-origin fetch
+      }
+
+      const fallbackBytes = await createSampleXfaPdf();
+      await loadPdfData(fallbackBytes, parsed.displayFilename);
+      showToast(
+        `Protocol Handler (${parsed.scheme}://) intercepted ${parsed.displayFilename}`
+      );
+    },
+    [loadPdfData]
+  );
+
+  // Inspect URL query parameters (?pdfProtocol=, ?xfaProtocol=, ?xdpProtocol=, ?pdfUrl=) & PWA launchQueue on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const incomingProtocol =
+      params.get('pdfProtocol') ||
+      params.get('xfaProtocol') ||
+      params.get('xdpProtocol') ||
+      params.get('pdfUrl');
+
+    if (incomingProtocol) {
+      handleTriggerProtocolUri(incomingProtocol);
+      // Clean URL query parameter without reloading page
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+
+    // PWA File Handling API (window.launchQueue)
+    const anyWin = window as any;
+    if (anyWin.launchQueue && typeof anyWin.launchQueue.setConsumer === 'function') {
+      anyWin.launchQueue.setConsumer(async (launchParams: any) => {
+        if (!launchParams?.files || launchParams.files.length === 0) return;
+        try {
+          const fileHandle = launchParams.files[0];
+          const file: File = await fileHandle.getFile();
+          const buf = await file.arrayBuffer();
+          await loadPdfData(new Uint8Array(buf), file.name);
+          showToast(`Opened ${file.name} via Browser/OS Default PDF File Handler`);
+        } catch (err: any) {
+          console.warn('LaunchQueue file handler warning:', err);
+        }
+      });
+    }
+  }, [handleTriggerProtocolUri, loadPdfData]);
+
+  // Global in-session link hijacker when Default PDF Protocol Handler is enabled
+  useEffect(() => {
+    if (!protocolSettings.enabled) return;
+
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!anchor) return;
+      if (anchor.hasAttribute('download')) return;
+
+      const rawHref = anchor.getAttribute('href') || '';
+      const isCustomScheme =
+        protocolSettings.interceptXfaProtocols &&
+        /^(web\+pdf|web\+xfa|web\+xdp):/i.test(rawHref);
+      const isPdfFileLink =
+        protocolSettings.interceptPdfLinks &&
+        /\.(pdf|xdp|xfdf)(\?.*)?$/i.test(rawHref);
+
+      if (isCustomScheme || isPdfFileLink) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleTriggerProtocolUri(rawHref);
+      }
+    };
+
+    document.addEventListener('click', handleGlobalClick, true);
+    return () => document.removeEventListener('click', handleGlobalClick, true);
+  }, [
+    protocolSettings.enabled,
+    protocolSettings.interceptPdfLinks,
+    protocolSettings.interceptXfaProtocols,
+    handleTriggerProtocolUri,
+  ]);
 
   // Internal Field Value Applier (does not trigger new history records during undo/redo)
   const applyFieldValueInternal = useCallback((fieldId: string, newValue: string) => {
@@ -615,6 +796,74 @@ export default function App() {
     showToast('Applied standardized document metadata');
   };
 
+  // Apply Page Reordering / Deletion / Rotation / Insertion from Page Organizer
+  const handleApplyPageOrganization = useCallback(
+    async (result: PageOrganizationResult, removeDeletedPageFields: boolean) => {
+      try {
+        // 1. Remap XFA subforms & fields to the new page numbering
+        const remappedSubforms = remapSubformsAfterPageOrganization(
+          subforms,
+          result.pageMapping,
+          result.deletedPageNumbers,
+          removeDeletedPageFields
+        );
+        setSubforms(remappedSubforms);
+
+        // 2. Flatten remapped fields and update datasets XML if XFA is present
+        const updatedFields: XFAField[] = [];
+        const collectFields = (list: XFASubform[]) => {
+          list.forEach(sf => {
+            updatedFields.push(...sf.fields);
+            if (sf.subforms.length > 0) collectFields(sf.subforms);
+          });
+        };
+        collectFields(remappedSubforms);
+
+        let finalPdfBytes = result.pdfBytes;
+        let updatedPackets = xfaPackets;
+
+        if (xfaPackets.templateXml || xfaPackets.datasetsXml || xfaPackets.fullXdpXml) {
+          const newDatasetsXml = updateDatasetsXml(xfaPackets.datasetsXml, updatedFields);
+          updatedPackets = {
+            ...xfaPackets,
+            datasetsXml: newDatasetsXml,
+          };
+          updatedPackets.fullXdpXml = assembleXdpPackage(updatedPackets);
+          setXfaPackets(updatedPackets);
+
+          try {
+            finalPdfBytes = await saveUpdatedXfaPdf(
+              result.pdfBytes,
+              newDatasetsXml,
+              updatedPackets.fullXdpXml
+            );
+          } catch {
+            finalPdfBytes = result.pdfBytes;
+          }
+        }
+
+        // 3. Update active PDF bytes and refresh resource manifest (pageCount, textPages, etc.)
+        setPdfBytes(finalPdfBytes);
+        const refreshedManifest = await extractAllPdfResources(finalPdfBytes, updatedPackets);
+        setManifest(refreshedManifest);
+
+        // 4. Build concise summary toast
+        const parts: string[] = [`${result.newPageCount} ${result.newPageCount === 1 ? 'page' : 'pages'}`];
+        if (result.reorderedCount > 0) parts.push(`${result.reorderedCount} reordered`);
+        if (result.deletedPageNumbers.length > 0) {
+          parts.push(`${result.deletedPageNumbers.length} deleted`);
+        }
+        if (result.insertedCount > 0) parts.push(`${result.insertedCount} added`);
+
+        showToast(`Updated PDF pages (${parts.join(' · ')})`);
+      } catch (err: any) {
+        console.error('Error applying page organization in App:', err);
+        showToast(`Failed to apply page changes: ${err.message}`);
+      }
+    },
+    [subforms, xfaPackets]
+  );
+
   // Global Keyboard Shortcuts integration
   useGlobalShortcuts({
     activeTab,
@@ -697,6 +946,8 @@ export default function App() {
           manifest={manifest}
           preflightSummary={preflightSummary}
           targetFieldId={targetFieldId}
+          targetFieldTrigger={targetFieldTrigger}
+          onSelectField={handleHeaderSelectField}
           onFieldValueChange={handleFieldValueChange}
           onUpdateFieldAppearance={handleUpdateFieldAppearance}
           onResetFieldAppearance={handleResetFieldAppearance}
@@ -721,6 +972,20 @@ export default function App() {
           history={formHistory.history}
           currentIndex={formHistory.currentIndex}
           jumpToHistoryIndex={formHistory.jumpToHistoryIndex}
+          onOpenProtocolHandler={() => setIsProtocolModalOpen(true)}
+          isProtocolHandlerActive={protocolSettings.enabled}
+          onApplyPageOrganization={handleApplyPageOrganization}
+          onLoadConvertedPdf={loadPdfData}
+        />
+
+        {/* Browser Default PDF & XFA Protocol Handler Modal */}
+        <PdfProtocolHandlerModal
+          isOpen={isProtocolModalOpen}
+          onClose={() => setIsProtocolModalOpen(false)}
+          settings={protocolSettings}
+          onUpdateSettings={handleUpdateProtocolSettings}
+          onTriggerProtocolUri={handleTriggerProtocolUri}
+          onShowToast={showToast}
         />
 
         {/* Keyboard Shortcuts Reference Modal */}
@@ -742,9 +1007,9 @@ export default function App() {
 
         {/* Toast Notification */}
         {toastMessage && (
-          <div className="fixed bottom-6 right-6 z-50 bg-slate-900 border border-slate-700 text-slate-100 text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
-            <span className="w-2 h-2 rounded-full bg-red-400" />
-            <span>{toastMessage}</span>
+          <div className="fixed bottom-16 lg:bottom-6 right-4 sm:right-6 left-4 sm:left-auto z-50 bg-slate-900 border border-slate-700 text-slate-100 text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
+            <span className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
+            <span className="truncate">{toastMessage}</span>
           </div>
         )}
       </>
@@ -769,18 +1034,26 @@ export default function App() {
         preflightWarningsCount={preflightSummary.warningsCount}
         fields={allFields}
         onSelectField={handleHeaderSelectField}
+        onEditFieldInForm={handleEditFieldInForm}
         onOpenShortcuts={() => setIsShortcutsModalOpen(true)}
         uiMode={uiMode}
         onSwitchToAcrobatUI={() => setUiMode('acrobat')}
         onSwitchToStudioUI={() => setUiMode('studio')}
         onLoadCanadaBookFund={handleLoadCanadaBookFund}
         onLoadAttachedXfa={handleLoadAttachedXfa}
+        onOpenProtocolHandler={() => setIsProtocolModalOpen(true)}
+        isProtocolHandlerActive={protocolSettings.enabled}
       />
 
       {/* Document Information & Control Toolbar */}
       <DocumentToolbar
         filename={filename}
         metadata={manifest?.metadata || null}
+        pdfBytes={pdfBytes}
+        fields={allFields}
+        onApplyPageOrganization={handleApplyPageOrganization}
+        onLoadConvertedPdf={loadPdfData}
+        onShowToast={showToast}
         onFileUpload={handleFileUpload}
         onLoadSampleXfa={handleLoadSampleXfa}
         onLoadSampleMedia={handleLoadSampleMedia}
@@ -797,7 +1070,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
         {isLoading ? (
           <div className="py-24 text-center space-y-3">
             <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mx-auto" />
@@ -877,6 +1150,7 @@ export default function App() {
                 fields={allFields}
                 subforms={subforms}
                 targetFieldId={targetFieldId}
+                targetFieldTrigger={targetFieldTrigger}
                 onFieldValueChange={handleFieldValueChange}
                 onUpdateFieldAppearance={handleUpdateFieldAppearance}
                 onResetFieldAppearance={handleResetFieldAppearance}
@@ -911,6 +1185,7 @@ export default function App() {
                 subforms={subforms}
                 textPages={manifest?.textPages || []}
                 manifest={manifest}
+                onLoadConvertedPdf={loadPdfData}
                 onShowToast={showToast}
               />
             )}
@@ -965,9 +1240,9 @@ export default function App() {
 
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 border border-slate-700 text-slate-100 text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
-          <span className="w-2 h-2 rounded-full bg-sky-400" />
-          <span>{toastMessage}</span>
+        <div className="fixed bottom-16 md:bottom-6 right-4 sm:right-6 left-4 sm:left-auto z-50 bg-slate-900 border border-slate-700 text-slate-100 text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
+          <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0" />
+          <span className="truncate">{toastMessage}</span>
         </div>
       )}
 
@@ -1045,6 +1320,16 @@ export default function App() {
           onShowToast={showToast}
         />
       )}
+
+      {/* Browser Default PDF & XFA Protocol Handler Modal */}
+      <PdfProtocolHandlerModal
+        isOpen={isProtocolModalOpen}
+        onClose={() => setIsProtocolModalOpen(false)}
+        settings={protocolSettings}
+        onUpdateSettings={handleUpdateProtocolSettings}
+        onTriggerProtocolUri={handleTriggerProtocolUri}
+        onShowToast={showToast}
+      />
     </div>
   );
 }

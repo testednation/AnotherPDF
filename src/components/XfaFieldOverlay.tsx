@@ -124,6 +124,7 @@ export const XfaFieldOverlay: React.FC<XfaFieldOverlayProps> = ({
         return (
           <div
             key={field.id}
+            id={`canvas-field-${field.id}`}
             onClick={e => {
               e.stopPropagation();
               onSelectField(field);

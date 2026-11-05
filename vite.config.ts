@@ -42,6 +42,30 @@ export default defineConfig(() => {
               purpose: 'maskable',
             },
           ],
+          protocol_handlers: [
+            {
+              protocol: 'web+pdf',
+              url: '/?pdfProtocol=%s',
+            },
+            {
+              protocol: 'web+xfa',
+              url: '/?xfaProtocol=%s',
+            },
+            {
+              protocol: 'web+xdp',
+              url: '/?xdpProtocol=%s',
+            },
+          ],
+          file_handlers: [
+            {
+              action: '/?fileHandler=1',
+              accept: {
+                'application/pdf': ['.pdf'],
+                'application/vnd.adobe.xdp+xml': ['.xdp'],
+                'application/vnd.adobe.xfdf': ['.xfdf'],
+              },
+            },
+          ],
         },
         workbox: {
           maximumFileSizeToCacheInBytes: 15 * 1024 * 1024,

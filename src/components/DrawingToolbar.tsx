@@ -88,7 +88,7 @@ export const DrawingToolbar: React.FC<DrawingToolbarProps> = ({
   };
 
   return (
-    <div className="bg-slate-900/95 border border-slate-800 rounded-xl p-2.5 sm:p-3 shadow-xl backdrop-blur-md flex flex-wrap items-center justify-between gap-2.5 transition-all">
+    <div className="bg-slate-900/95 border border-slate-800 rounded-xl p-2 sm:p-3 shadow-xl backdrop-blur-md flex flex-nowrap sm:flex-wrap items-center justify-between gap-2 overflow-x-auto no-scrollbar transition-all">
       {/* Group 1: Primary Draw Toggle & Tool Selector */}
       <div className="flex items-center gap-1.5 shrink-0">
         <button
