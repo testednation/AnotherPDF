@@ -1,12 +1,36 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+
+function disableClientWebSocketPlugin(): Plugin {
+  return {
+    name: 'disable-vite-client-ws',
+    apply: 'serve',
+    enforce: 'post',
+    transform(code, id) {
+      if (
+        (id.includes('vite/dist/client/client.mjs') || id.includes('@vite/client')) &&
+        code.includes('const createWebSocketModuleRunnerTransport = (options) => {')
+      ) {
+        return {
+          code: code.replace(
+            'const createWebSocketModuleRunnerTransport = (options) => {',
+            'const createWebSocketModuleRunnerTransport = () => ({ async connect() {}, disconnect() {}, send() {} }); const __disabledCreateWebSocketModuleRunnerTransport = (options) => {'
+          ),
+          map: null,
+        };
+      }
+      return null;
+    },
+  };
+}
 
 export default defineConfig(() => {
   return {
     plugins: [
+      disableClientWebSocketPlugin(),
       react(),
       tailwindcss(),
       VitePWA({
@@ -114,6 +138,7 @@ export default defineConfig(() => {
     },
     server: {
       hmr: false,
+      ws: false as const,
       watch: null,
     },
   };

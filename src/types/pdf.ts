@@ -36,6 +36,7 @@ export interface XFAValidationRule {
   message?: string;
   picturePattern?: string; // e.g. "date{YYYY-MM-DD}", "text{A9A 9A9}", "num{99999.99}"
   regexPattern?: string;
+  regexFlags?: string;
   minValue?: number;
   maxValue?: number;
   scriptExpr?: string; // FormCalc or JS validation script
@@ -176,6 +177,15 @@ export interface PdfDocumentMetadata {
   xfaType?: 'dynamic' | 'static' | 'none';
   hasAcroForm: boolean;
   isEncrypted: boolean;
+}
+
+export interface EditablePdfMetadata {
+  title: string;
+  author: string;
+  subject: string;
+  keywords: string;
+  creator: string;
+  producer: string;
 }
 
 export interface ExtractedResourceManifest {

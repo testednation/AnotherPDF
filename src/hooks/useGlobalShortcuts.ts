@@ -1,11 +1,13 @@
 import { useEffect, useCallback } from 'react';
 
-export type WorkspaceTab = 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch' | 'fieldmap' | 'assistant';
+export type WorkspaceTab = 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch' | 'fieldmap' | 'assistant' | 'diff' | 'metadata';
 
 export const WORKSPACE_TABS: WorkspaceTab[] = [
   'preview',
   'form',
   'fieldmap',
+  'metadata',
+  'diff',
   'assistant',
   'xml',
   'preflight',

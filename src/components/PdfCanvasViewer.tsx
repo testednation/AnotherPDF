@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -29,6 +29,7 @@ import {
   FolderTree,
   Scan,
   Printer,
+  Flame,
 } from 'lucide-react';
 import { pdfjsLib } from '../utils/pdfWorker';
 import { XFAField, XFAFieldAppearance, XFASubform } from '../types/pdf';
@@ -37,6 +38,7 @@ import { FieldPropertiesInspector } from './FieldPropertiesInspector';
 import { QuickNavTree } from './QuickNavTree';
 import { FreehandDrawingLayer } from './FreehandDrawingLayer';
 import { DrawingToolbar } from './DrawingToolbar';
+import { FieldHeatmapControlBar } from './FieldHeatmapControlBar';
 import { DrawingStroke, PageAnnotations, DrawingSettings } from '../types/drawing';
 import { createSampleComparisonPdf } from '../utils/samplePdfs';
 import { extractXfaPackets, parseXfaTemplate } from '../utils/xfaEngine';
@@ -44,6 +46,14 @@ import { PDFDocument } from 'pdf-lib';
 import { FieldDetectionModal } from './FieldDetectionModal';
 import { RegularPdfConvertModal } from './RegularPdfConvertModal';
 import { PrintScaleModal } from './PrintScaleModal';
+import { FieldTagStore } from '../utils/fieldTags';
+import {
+  HeatmapMetricMode,
+  FieldInteractionMap,
+  computeFieldHeatmap,
+  loadFieldInteractions,
+  saveFieldInteractions,
+} from '../utils/fieldHeatmap';
 
 export type CanvasViewMode = 'single' | 'two_pages' | 'compare_pdfs';
 
@@ -55,6 +65,10 @@ interface PdfCanvasViewerProps {
   subforms?: XFASubform[];
   targetFieldId?: string | null;
   targetFieldTrigger?: number;
+  fieldTagStore?: FieldTagStore;
+  fieldInteractions?: FieldInteractionMap;
+  onRecordFieldSelection?: (fieldId: string) => void;
+  onResetFieldInteractions?: () => void;
   onFieldValueChange: (fieldId: string, newValue: string) => void;
   onUpdateFieldAppearance: (fieldId: string, appearance: XFAFieldAppearance, applyToAllOfType: boolean) => void;
   onResetFieldAppearance: (fieldId: string) => void;
@@ -70,6 +84,10 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
   subforms = [],
   targetFieldId = null,
   targetFieldTrigger = 0,
+  fieldTagStore,
+  fieldInteractions,
+  onRecordFieldSelection,
+  onResetFieldInteractions,
   onFieldValueChange,
   onUpdateFieldAppearance,
   onResetFieldAppearance,
@@ -159,6 +177,62 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
   const [isFieldDetectionOpen, setIsFieldDetectionOpen] = useState(false);
   const [isConvertRegularPdfOpen, setIsConvertRegularPdfOpen] = useState(false);
   const [isPrintScaleOpen, setIsPrintScaleOpen] = useState(false);
+
+  // Field Interaction Heatmap Overlay State
+  const [heatmapEnabled, setHeatmapEnabled] = useState(false);
+  const [heatmapMode, setHeatmapMode] = useState<HeatmapMetricMode>('completion');
+  const [heatmapOpacity, setHeatmapOpacity] = useState(0.5);
+  const [heatmapShowLabels, setHeatmapShowLabels] = useState(true);
+  const missingReqCursorRef = useRef(0);
+  const problemCursorRef = useRef(0);
+
+  // Local fallback interaction tracking when parent does not supply fieldInteractions
+  const [localInteractions, setLocalInteractions] = useState<FieldInteractionMap>(() =>
+    loadFieldInteractions(filename)
+  );
+  const loadedLocalInteractionDocRef = useRef<string>(filename);
+
+  useEffect(() => {
+    if (fieldInteractions !== undefined) return;
+    if (loadedLocalInteractionDocRef.current !== filename) {
+      loadedLocalInteractionDocRef.current = filename;
+      setLocalInteractions(loadFieldInteractions(filename));
+    }
+  }, [filename, fieldInteractions]);
+
+  const activeInteractions = fieldInteractions ?? localInteractions;
+
+  const recordSelection = useCallback(
+    (fieldId: string) => {
+      if (onRecordFieldSelection) {
+        onRecordFieldSelection(fieldId);
+        return;
+      }
+      setLocalInteractions(prev => {
+        const existing = prev[fieldId] || { edits: 0, selections: 0 };
+        const next: FieldInteractionMap = {
+          ...prev,
+          [fieldId]: {
+            ...existing,
+            selections: existing.selections + 1,
+            lastInteractedAt: new Date().toISOString(),
+          },
+        };
+        saveFieldInteractions(filename, next);
+        return next;
+      });
+    },
+    [onRecordFieldSelection, filename]
+  );
+
+  const handleResetInteractions = useCallback(() => {
+    if (onResetFieldInteractions) {
+      onResetFieldInteractions();
+      return;
+    }
+    setLocalInteractions({});
+    saveFieldInteractions(filename, {});
+  }, [onResetFieldInteractions, filename]);
 
   // Freehand Drawing Layer & Annotation State
   const [pageAnnotations, setPageAnnotations] = useState<PageAnnotations>(() => {
@@ -317,7 +391,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Jump directly to an XFA form field from Quick Nav tree or Global Search
+  // Jump directly to an XFA form field from Quick Nav tree, Heatmap shortcuts, or Global Search
   const handleJumpToField = useCallback((field: XFAField) => {
     const targetPage = field.bounds?.pageNumber || 1;
     setPrimaryPage(targetPage);
@@ -325,7 +399,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
     if (typeFilter !== 'all' && typeFilter !== field.type) {
       setTypeFilter('all');
     }
-    if (!showBoundaries) {
+    if (!showBoundaries && !heatmapEnabled) {
       setShowBoundaries(true);
     }
     if (!showInspector && (typeof window === 'undefined' || window.innerWidth >= 1024)) {
@@ -339,7 +413,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
         overlayEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
       }
     }, 140);
-  }, [showBoundaries, showInspector, typeFilter]);
+  }, [showBoundaries, heatmapEnabled, showInspector, typeFilter]);
 
   // Synchronize target field from external jump (e.g. Header or Acrobat Global Search)
   useEffect(() => {
@@ -354,10 +428,62 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
   const comparisonFileInputRef = useRef<HTMLInputElement>(null);
 
   // Active fields based on selected pane & page
-  const primaryPageFields = fields.filter(f => (f.bounds?.pageNumber || 1) === primaryPage);
-  const secondaryPageFields = (viewMode === 'compare_pdfs' ? secondaryFields : fields).filter(
-    f => (f.bounds?.pageNumber || 1) === secondaryPage
+  const primaryPageFields = useMemo(
+    () => fields.filter(f => (f.bounds?.pageNumber || 1) === primaryPage),
+    [fields, primaryPage]
   );
+
+  // Live Field Interaction Heatmap metrics (overall document, current page, and secondary comparison pane)
+  const primaryHeatmap = useMemo(
+    () => computeFieldHeatmap(fields, activeInteractions, heatmapMode),
+    [fields, activeInteractions, heatmapMode]
+  );
+
+  const primaryPageHeatmap = useMemo(
+    () => computeFieldHeatmap(primaryPageFields, activeInteractions, heatmapMode),
+    [primaryPageFields, activeInteractions, heatmapMode]
+  );
+
+  const secondaryHeatmap = useMemo(() => {
+    if (viewMode === 'compare_pdfs') {
+      return computeFieldHeatmap(secondaryFields, {}, heatmapMode);
+    }
+    return primaryHeatmap;
+  }, [viewMode, secondaryFields, heatmapMode, primaryHeatmap]);
+
+  const handleJumpToNextMissingRequired = useCallback(() => {
+    const ids = primaryHeatmap.summary.missingRequiredFieldIds;
+    if (ids.length === 0) return;
+    const idx = missingReqCursorRef.current % ids.length;
+    missingReqCursorRef.current = (idx + 1) % ids.length;
+    const match = fields.find(f => f.id === ids[idx]);
+    if (match) {
+      handleJumpToField(match);
+      recordSelection(match.id);
+    }
+  }, [primaryHeatmap.summary.missingRequiredFieldIds, fields, handleJumpToField, recordSelection]);
+
+  const handleJumpToNextProblem = useCallback(() => {
+    const ids = primaryHeatmap.summary.problemFieldIds;
+    if (ids.length === 0) return;
+    const idx = problemCursorRef.current % ids.length;
+    problemCursorRef.current = (idx + 1) % ids.length;
+    const match = fields.find(f => f.id === ids[idx]);
+    if (match) {
+      handleJumpToField(match);
+      recordSelection(match.id);
+    }
+  }, [primaryHeatmap.summary.problemFieldIds, fields, handleJumpToField, recordSelection]);
+
+  const handleJumpToHotspot = useCallback(() => {
+    const hotspotId = primaryHeatmap.summary.hotspotFieldId;
+    if (!hotspotId) return;
+    const match = fields.find(f => f.id === hotspotId);
+    if (match) {
+      handleJumpToField(match);
+      recordSelection(match.id);
+    }
+  }, [primaryHeatmap.summary.hotspotFieldId, fields, handleJumpToField, recordSelection]);
 
   const selectedField =
     fields.find(f => f.id === selectedFieldId) ||
@@ -946,6 +1072,23 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
               </button>
             )}
 
+            {/* Field Interaction Heatmap Toggle */}
+            {hasXfa && (
+              <button
+                type="button"
+                onClick={() => setHeatmapEnabled(prev => !prev)}
+                className={`px-2.5 py-1 rounded-md border text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+                  heatmapEnabled
+                    ? 'bg-orange-950/80 border-orange-500/80 text-orange-200 shadow-xs'
+                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white hover:border-orange-500/50'
+                }`}
+                title="Toggle Field Interaction Heatmap overlay (completion status, usage frequency, or error count)"
+              >
+                <Flame className={`w-3.5 h-3.5 ${heatmapEnabled ? 'text-orange-400' : 'text-orange-400/80'}`} />
+                <span>Heatmap</span>
+              </button>
+            )}
+
             {/* Filter by Field Type */}
             {hasXfa && (
               <div className="flex items-center gap-1 bg-slate-950/70 border border-slate-800 rounded-md px-2 py-0.5">
@@ -1017,6 +1160,26 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
         currentPage={primaryPage}
         onExportDrawingPng={handleExportDrawingPng}
       />
+
+      {/* Field Interaction Heatmap Controls & Live Legend */}
+      {hasXfa && heatmapEnabled && (
+        <FieldHeatmapControlBar
+          mode={heatmapMode}
+          onModeChange={setHeatmapMode}
+          opacity={heatmapOpacity}
+          onOpacityChange={setHeatmapOpacity}
+          showMetricLabels={heatmapShowLabels}
+          onToggleMetricLabels={() => setHeatmapShowLabels(prev => !prev)}
+          summary={primaryHeatmap.summary}
+          pageSummary={primaryPageHeatmap.summary}
+          currentPage={primaryPage}
+          onJumpToNextProblem={handleJumpToNextProblem}
+          onJumpToNextMissingRequired={handleJumpToNextMissingRequired}
+          onJumpToHotspot={handleJumpToHotspot}
+          onResetUsageMetrics={handleResetInteractions}
+          onClose={() => setHeatmapEnabled(false)}
+        />
+      )}
 
       {/* Comparison Difference Summary Bar (Visible only when comparing 2 PDFs) */}
       {viewMode === 'compare_pdfs' && (
@@ -1091,8 +1254,10 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
               fields={fields}
               selectedFieldId={selectedFieldId}
               currentPage={primaryPage}
+              fieldTagStore={fieldTagStore}
               onSelectField={f => {
                 handleJumpToField(f);
+                recordSelection(f.id);
                 if (typeof window !== 'undefined' && window.innerWidth < 1024) {
                   setShowQuickNav(false);
                 }
@@ -1177,7 +1342,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
             >
               <canvas ref={primaryCanvasRef} className="block" />
 
-              {/* Recognized XFA Form Field Boundary Overlay */}
+              {/* Recognized XFA Form Field Boundary & Heatmap Overlay */}
               {hasXfa && (
                 <XfaFieldOverlay
                   fields={fields}
@@ -1190,11 +1355,16 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
                   selectedFieldId={selectedFieldId}
                   onSelectField={f => {
                     setSelectedFieldId(f.id);
+                    recordSelection(f.id);
                     if (!showInspector) setShowInspector(true);
                   }}
                   showBoundaries={showBoundaries}
                   showBadges={showBadges}
                   typeFilter={typeFilter}
+                  heatmapEnabled={heatmapEnabled}
+                  heatmapCells={primaryHeatmap.cells}
+                  heatmapOpacity={heatmapOpacity}
+                  heatmapShowLabels={heatmapShowLabels}
                 />
               )}
 
@@ -1283,7 +1453,7 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
               >
                 <canvas ref={secondaryCanvasRef} className="block" />
 
-                {/* Recognized XFA Form Field Boundary Overlay on Right Pane */}
+                {/* Recognized XFA Form Field Boundary & Heatmap Overlay on Right Pane */}
                 {(viewMode === 'two_pages' ? hasXfa : secondaryHasXfa) && (
                   <XfaFieldOverlay
                     fields={viewMode === 'two_pages' ? fields : secondaryFields}
@@ -1296,11 +1466,18 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
                     selectedFieldId={selectedFieldId}
                     onSelectField={f => {
                       setSelectedFieldId(f.id);
+                      if (viewMode === 'two_pages') {
+                        recordSelection(f.id);
+                      }
                       if (!showInspector) setShowInspector(true);
                     }}
                     showBoundaries={showBoundaries}
                     showBadges={showBadges}
                     typeFilter={typeFilter}
+                    heatmapEnabled={heatmapEnabled}
+                    heatmapCells={secondaryHeatmap.cells}
+                    heatmapOpacity={heatmapOpacity}
+                    heatmapShowLabels={heatmapShowLabels}
                   />
                 )}
 
@@ -1327,7 +1504,10 @@ export const PdfCanvasViewer: React.FC<PdfCanvasViewerProps> = ({
             <FieldPropertiesInspector
               selectedField={selectedField}
               allFieldsOnPage={primaryPageFields}
-              onSelectField={f => setSelectedFieldId(f.id)}
+              onSelectField={f => {
+                setSelectedFieldId(f.id);
+                recordSelection(f.id);
+              }}
               onFieldValueChange={onFieldValueChange}
               onUpdateAppearance={onUpdateFieldAppearance}
               onResetAppearance={onResetFieldAppearance}

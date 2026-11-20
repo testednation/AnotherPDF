@@ -1,6 +1,6 @@
 import { PDFDocument, PDFName, PDFDict, PDFArray, PDFStream, PDFRawStream } from 'pdf-lib';
 import { inflate } from 'pako';
-import { XFAField, XFASubform, XFAPackets } from '../types/pdf';
+import { XFAField, XFASubform, XFAPackets, EditablePdfMetadata } from '../types/pdf';
 import { parseXfaAssistFromElement } from './xfaTooltipHelper';
 
 /**
@@ -884,21 +884,48 @@ function cleanXmlTagName(name: string): string {
 }
 
 /**
- * Re-saves the PDF with the updated datasets XML embedded into the /AcroForm /XFA stream!
+ * Parses a comma- or semicolon-delimited keywords string into normalized, deduplicated tokens.
+ */
+export function parseMetadataKeywords(raw?: string): string[] {
+  if (!raw) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  raw
+    .split(/[,;]+/)
+    .map(part => part.trim())
+    .filter(Boolean)
+    .forEach(token => {
+      const key = token.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(token);
+      }
+    });
+  return result;
+}
+
+/**
+ * Re-saves the PDF with the updated datasets XML embedded into the /AcroForm /XFA stream
+ * and writes standard PDF Info dictionary metadata (Title, Author, Subject, Keywords, Creator, Producer).
  */
 export async function saveUpdatedXfaPdf(
   originalPdfBytes: Uint8Array,
   updatedDatasetsXml: string,
-  updatedFullXdp?: string
+  updatedFullXdp?: string,
+  metadata?: Partial<EditablePdfMetadata>
 ): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.load(originalPdfBytes, { ignoreEncryption: true });
   const catalog = pdfDoc.catalog;
   const acroFormRef = catalog.get(PDFName.of('AcroForm'));
 
-  const xmlEncoder = new TextEncoder();
-  const datasetsBytes = xmlEncoder.encode(updatedDatasetsXml);
+  const hasXfaPayload = Boolean(
+    (updatedDatasetsXml && updatedDatasetsXml.trim().length > 0) ||
+      (updatedFullXdp && updatedFullXdp.trim().length > 0)
+  );
 
-  if (acroFormRef) {
+  if (acroFormRef && hasXfaPayload) {
+    const xmlEncoder = new TextEncoder();
+    const datasetsBytes = xmlEncoder.encode(updatedDatasetsXml);
     const acroForm = pdfDoc.context.lookup(acroFormRef);
     if (acroForm instanceof PDFDict) {
       const xfaEntry = acroForm.get(PDFName.of('XFA'));
@@ -944,6 +971,29 @@ export async function saveUpdatedXfaPdf(
         acroForm.set(PDFName.of('XFA'), xfaArray);
       }
     }
+  }
+
+  // Embed standard PDF Info dictionary metadata properties when provided
+  if (metadata) {
+    if (metadata.title !== undefined) {
+      pdfDoc.setTitle(metadata.title.trim());
+    }
+    if (metadata.author !== undefined) {
+      pdfDoc.setAuthor(metadata.author.trim());
+    }
+    if (metadata.subject !== undefined) {
+      pdfDoc.setSubject(metadata.subject.trim());
+    }
+    if (metadata.keywords !== undefined) {
+      pdfDoc.setKeywords(parseMetadataKeywords(metadata.keywords));
+    }
+    if (metadata.creator !== undefined) {
+      pdfDoc.setCreator(metadata.creator.trim());
+    }
+    if (metadata.producer !== undefined) {
+      pdfDoc.setProducer(metadata.producer.trim());
+    }
+    pdfDoc.setModificationDate(new Date());
   }
 
   return await pdfDoc.save();

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { AlertTriangle, X } from 'lucide-react';
 import { Header } from './components/Header';
 import { DocumentToolbar } from './components/DocumentToolbar';
 import { XfaFormEditor } from './components/XfaFormEditor';
@@ -9,6 +10,8 @@ import { PreflightAuditView } from './components/PreflightAuditView';
 import { ConversionView } from './components/ConversionView';
 import { BatchProcessorView } from './components/BatchProcessorView';
 import { FieldMapPanel } from './components/FieldMapPanel';
+import { FieldDiffView } from './components/FieldDiffView';
+import { MetadataEditorPanel } from './components/MetadataEditorPanel';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { useGlobalShortcuts, WorkspaceTab } from './hooks/useGlobalShortcuts';
@@ -18,6 +21,7 @@ import {
   parseXfaTemplate,
   updateDatasetsXml,
   saveUpdatedXfaPdf,
+  parseMetadataKeywords,
   exportDataAsFile,
   assembleXdpPackage,
   updateFieldAppearanceInTemplate,
@@ -43,13 +47,43 @@ import {
   remapSubformsAfterPageOrganization,
 } from './utils/pageOrganizer';
 import {
+  CustomFieldRegexRule,
+  evaluateCustomRegexRule,
+} from './utils/customValidationRules';
+import {
+  FieldTagDefinition,
+  FieldTagStore,
+  TagColorKey,
+  createTagId,
+  loadFieldTagStore,
+  saveFieldTagStore,
+} from './utils/fieldTags';
+import {
+  FieldInteractionMap,
+  loadFieldInteractions,
+  saveFieldInteractions,
+} from './utils/fieldHeatmap';
+import {
   XFASubform,
   XFAPackets,
   ExtractedResourceManifest,
   XFAField,
   XFAFieldAppearance,
+  EditablePdfMetadata,
+  PdfDocumentMetadata,
 } from './types/pdf';
 import { PreflightProfile } from './types/preflight';
+
+function toEditableMetadata(meta?: PdfDocumentMetadata | null): EditablePdfMetadata {
+  return {
+    title: meta?.title || '',
+    author: meta?.author || '',
+    subject: meta?.subject || '',
+    keywords: meta?.keywords || '',
+    creator: meta?.creator || '',
+    producer: meta?.producer || '',
+  };
+}
 
 export default function App() {
   const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
@@ -57,13 +91,31 @@ export default function App() {
   const [subforms, setSubforms] = useState<XFASubform[]>([]);
   const [xfaPackets, setXfaPackets] = useState<XFAPackets>({ otherPackets: {} });
   const [manifest, setManifest] = useState<ExtractedResourceManifest | null>(null);
-  const [activeTab, setActiveTab] = useState<'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch' | 'fieldmap' | 'assistant'>('preview');
+  const [originalMetadata, setOriginalMetadata] = useState<EditablePdfMetadata | null>(null);
+  const [lastSavedMetadata, setLastSavedMetadata] = useState<EditablePdfMetadata | null>(null);
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('preview');
   const [preflightProfile, setPreflightProfile] = useState<PreflightProfile>('comprehensive');
 
   const [isLoading, setIsLoading] = useState(true);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isExportingZip, setIsExportingZip] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastState, setToastState] = useState<{
+    message: string;
+    variant: 'info' | 'warning';
+    title?: string;
+  } | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+  const [customValidationRules, setCustomValidationRules] = useState<
+    Record<string, CustomFieldRegexRule>
+  >({});
+  const [fieldTagStore, setFieldTagStore] = useState<FieldTagStore>(() =>
+    loadFieldTagStore('Enterprise_Registry_XFA_Form.pdf')
+  );
+  const loadedTagDocRef = useRef<string>('Enterprise_Registry_XFA_Form.pdf');
+  const [fieldInteractions, setFieldInteractions] = useState<FieldInteractionMap>(() =>
+    loadFieldInteractions('Enterprise_Registry_XFA_Form.pdf')
+  );
+  const loadedInteractionDocRef = useRef<string>('Enterprise_Registry_XFA_Form.pdf');
   const [targetFieldId, setTargetFieldId] = useState<string | null>(null);
   const [targetFieldTrigger, setTargetFieldTrigger] = useState(0);
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false);
@@ -86,19 +138,79 @@ export default function App() {
     localStorage.setItem('acro_ui_mode', uiMode);
   }, [uiMode]);
 
+  // Reload custom field tags whenever the active document filename changes
+  useEffect(() => {
+    if (loadedTagDocRef.current !== filename) {
+      loadedTagDocRef.current = filename;
+      setFieldTagStore(loadFieldTagStore(filename));
+    }
+  }, [filename]);
+
+  // Persist custom field tags for the active document
+  useEffect(() => {
+    if (loadedTagDocRef.current === filename) {
+      saveFieldTagStore(filename, fieldTagStore);
+    }
+  }, [filename, fieldTagStore]);
+
+  // Reload field interaction telemetry whenever the active document filename changes
+  useEffect(() => {
+    if (loadedInteractionDocRef.current !== filename) {
+      loadedInteractionDocRef.current = filename;
+      setFieldInteractions(loadFieldInteractions(filename));
+    }
+  }, [filename]);
+
+  // Persist field interaction telemetry for the active document
+  useEffect(() => {
+    if (loadedInteractionDocRef.current === filename) {
+      saveFieldInteractions(filename, fieldInteractions);
+    }
+  }, [filename, fieldInteractions]);
+
   const handleUpdateProtocolSettings = useCallback((next: PdfProtocolSettings) => {
     setProtocolSettings(next);
     savePdfProtocolSettings(next);
   }, []);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
+  const showToast = useCallback(
+    (msg: string, variant: 'info' | 'warning' = 'info', title?: string) => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+      setToastState({ message: msg, variant, title });
+      const durationMs = variant === 'warning' ? 5000 : 3200;
+      toastTimerRef.current = window.setTimeout(() => {
+        setToastState(null);
+        toastTimerRef.current = null;
+      }, durationMs);
+    },
+    []
+  );
+
+  const handleRecordFieldSelection = useCallback((fieldId: string) => {
+    setFieldInteractions(prev => {
+      const existing = prev[fieldId] || { edits: 0, selections: 0 };
+      return {
+        ...prev,
+        [fieldId]: {
+          ...existing,
+          selections: existing.selections + 1,
+          lastInteractedAt: new Date().toISOString(),
+        },
+      };
+    });
+  }, []);
+
+  const handleResetFieldInteractions = useCallback(() => {
+    setFieldInteractions({});
+    showToast('Cleared field interaction usage metrics for this document');
+  }, [showToast]);
 
   const handleHeaderSelectField = (field: XFAField) => {
     setTargetFieldId(field.id);
     setTargetFieldTrigger(c => c + 1);
+    handleRecordFieldSelection(field.id);
     setActiveTab('preview');
     const label = field.caption || field.name;
     const page = field.bounds?.pageNumber || 1;
@@ -165,10 +277,14 @@ export default function App() {
       // 2. Parse Template into Subforms & Fields
       const parsedSubforms = parseXfaTemplate(packets.templateXml, packets.datasetsXml);
       setSubforms(parsedSubforms);
+      setCustomValidationRules({});
 
       // 3. Extract Resources (Images, Fonts, Attachments, Text, Metadata)
       const resManifest = await extractAllPdfResources(bytes, packets);
       setManifest(resManifest);
+      const loadedEditableMeta = toEditableMetadata(resManifest.metadata);
+      setOriginalMetadata(loadedEditableMeta);
+      setLastSavedMetadata(loadedEditableMeta);
 
       // By default, open the PDF canvas viewer so the rendered document is immediately visible
       setActiveTab('preview');
@@ -435,7 +551,233 @@ export default function App() {
     onNotify: (msg) => showToast(msg),
   });
 
-  // User Field Value Change (records to history stack)
+  // Sync a custom regex rule into the matching XFAField's validation object so Form Editor & Preflight stay in sync
+  const syncRegexRuleToSubforms = useCallback(
+    (fieldId: string, rule: CustomFieldRegexRule | null) => {
+      const updateRecursive = (sfList: XFASubform[]): XFASubform[] =>
+        sfList.map(sf => ({
+          ...sf,
+          fields: sf.fields.map(f => {
+            if (f.id !== fieldId) return f;
+            const prevValidation = { ...(f.validation || {}) };
+            if (rule && rule.enabled) {
+              return {
+                ...f,
+                validation: {
+                  ...prevValidation,
+                  regexPattern: rule.pattern,
+                  regexFlags: rule.flags,
+                  message: rule.message,
+                },
+              };
+            }
+            delete prevValidation.regexPattern;
+            delete prevValidation.regexFlags;
+            return {
+              ...f,
+              validation: Object.keys(prevValidation).length > 0 ? prevValidation : undefined,
+            };
+          }),
+          subforms: updateRecursive(sf.subforms),
+        }));
+
+      setSubforms(prev => updateRecursive(prev));
+    },
+    []
+  );
+
+  const handleSaveCustomValidationRule = useCallback(
+    (rule: CustomFieldRegexRule) => {
+      setCustomValidationRules(prev => ({
+        ...prev,
+        [rule.fieldId]: rule,
+      }));
+      syncRegexRuleToSubforms(rule.fieldId, rule);
+
+      const targetField = allFields.find(f => f.id === rule.fieldId);
+      const evalRes = evaluateCustomRegexRule(rule, targetField?.value || '');
+      if (evalRes.status === 'violation') {
+        showToast(
+          evalRes.message || `Current value violates /${rule.pattern}/${rule.flags}`,
+          'warning',
+          `Validation Warning — ${rule.fieldCaption}`
+        );
+      } else {
+        showToast(
+          `Saved custom regex rule /${rule.pattern}/${rule.flags} for "${rule.fieldCaption}"`
+        );
+      }
+    },
+    [allFields, syncRegexRuleToSubforms, showToast]
+  );
+
+  const handleDeleteCustomValidationRule = useCallback(
+    (fieldId: string) => {
+      const existing = customValidationRules[fieldId];
+      setCustomValidationRules(prev => {
+        const next = { ...prev };
+        delete next[fieldId];
+        return next;
+      });
+      syncRegexRuleToSubforms(fieldId, null);
+      if (existing) {
+        showToast(`Removed custom regex rule for "${existing.fieldCaption}"`);
+      }
+    },
+    [customValidationRules, syncRegexRuleToSubforms, showToast]
+  );
+
+  const handleToggleCustomValidationRule = useCallback(
+    (fieldId: string, enabled: boolean) => {
+      const existing = customValidationRules[fieldId];
+      if (!existing) return;
+      const updated: CustomFieldRegexRule = { ...existing, enabled };
+      setCustomValidationRules(prev => ({
+        ...prev,
+        [fieldId]: updated,
+      }));
+      syncRegexRuleToSubforms(fieldId, enabled ? updated : null);
+      showToast(
+        `${enabled ? 'Enabled' : 'Paused'} regex rule for "${existing.fieldCaption}"`
+      );
+    },
+    [customValidationRules, syncRegexRuleToSubforms, showToast]
+  );
+
+  // Custom Field Tag CRUD & assignment handlers
+  const handleCreateFieldTag = useCallback(
+    (name: string, color: TagColorKey, description?: string): FieldTagDefinition | null => {
+      const trimmed = name.trim();
+      if (!trimmed) return null;
+      const existing = fieldTagStore.definitions.find(
+        d => d.name.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (existing) {
+        return existing;
+      }
+      const created: FieldTagDefinition = {
+        id: createTagId(trimmed),
+        name: trimmed,
+        color,
+        description: description?.trim() || undefined,
+        createdAt: new Date().toISOString(),
+      };
+      setFieldTagStore(prev => ({
+        ...prev,
+        definitions: [...prev.definitions, created],
+      }));
+      showToast(`Created custom tag "${created.name}"`);
+      return created;
+    },
+    [fieldTagStore.definitions, showToast]
+  );
+
+  const handleUpdateFieldTag = useCallback(
+    (tagId: string, updates: { name?: string; color?: TagColorKey; description?: string }) => {
+      setFieldTagStore(prev => ({
+        ...prev,
+        definitions: prev.definitions.map(d =>
+          d.id === tagId
+            ? {
+                ...d,
+                name: updates.name !== undefined ? updates.name.trim() || d.name : d.name,
+                color: updates.color ?? d.color,
+                description:
+                  updates.description !== undefined ? updates.description : d.description,
+              }
+            : d
+        ),
+      }));
+      showToast('Updated custom tag');
+    },
+    [showToast]
+  );
+
+  const handleDeleteFieldTag = useCallback(
+    (tagId: string) => {
+      const target = fieldTagStore.definitions.find(d => d.id === tagId);
+      setFieldTagStore(prev => {
+        const nextAssignments: Record<string, string[]> = {};
+        Object.entries(prev.assignments).forEach(([fieldId, tagIds]) => {
+          const filtered = tagIds.filter(id => id !== tagId);
+          if (filtered.length > 0) {
+            nextAssignments[fieldId] = filtered;
+          }
+        });
+        return {
+          definitions: prev.definitions.filter(d => d.id !== tagId),
+          assignments: nextAssignments,
+        };
+      });
+      if (target) {
+        showToast(`Deleted tag "${target.name}"`);
+      }
+    },
+    [fieldTagStore.definitions, showToast]
+  );
+
+  const handleToggleFieldTag = useCallback((fieldId: string, tagId: string) => {
+    setFieldTagStore(prev => {
+      const current = prev.assignments[fieldId] || [];
+      const nextList = current.includes(tagId)
+        ? current.filter(id => id !== tagId)
+        : [...current, tagId];
+      const nextAssignments = { ...prev.assignments };
+      if (nextList.length > 0) {
+        nextAssignments[fieldId] = nextList;
+      } else {
+        delete nextAssignments[fieldId];
+      }
+      return { ...prev, assignments: nextAssignments };
+    });
+  }, []);
+
+  const handleBulkAssignFieldTag = useCallback(
+    (fieldIds: string[], tagId: string) => {
+      if (fieldIds.length === 0) return;
+      const tag = fieldTagStore.definitions.find(d => d.id === tagId);
+      setFieldTagStore(prev => {
+        const nextAssignments = { ...prev.assignments };
+        fieldIds.forEach(fieldId => {
+          const current = nextAssignments[fieldId] || [];
+          if (!current.includes(tagId)) {
+            nextAssignments[fieldId] = [...current, tagId];
+          }
+        });
+        return { ...prev, assignments: nextAssignments };
+      });
+      if (tag) {
+        showToast(`Applied "${tag.name}" to ${fieldIds.length} ${fieldIds.length === 1 ? 'field' : 'fields'}`);
+      }
+    },
+    [fieldTagStore.definitions, showToast]
+  );
+
+  const handleBulkRemoveFieldTag = useCallback(
+    (fieldIds: string[], tagId: string) => {
+      if (fieldIds.length === 0) return;
+      const tag = fieldTagStore.definitions.find(d => d.id === tagId);
+      setFieldTagStore(prev => {
+        const nextAssignments = { ...prev.assignments };
+        fieldIds.forEach(fieldId => {
+          const current = nextAssignments[fieldId] || [];
+          const filtered = current.filter(id => id !== tagId);
+          if (filtered.length > 0) {
+            nextAssignments[fieldId] = filtered;
+          } else {
+            delete nextAssignments[fieldId];
+          }
+        });
+        return { ...prev, assignments: nextAssignments };
+      });
+      if (tag) {
+        showToast(`Removed "${tag.name}" from ${fieldIds.length} ${fieldIds.length === 1 ? 'field' : 'fields'}`);
+      }
+    },
+    [fieldTagStore.definitions, showToast]
+  );
+
+  // User Field Value Change (records to history stack + interaction heatmap + checks custom regex validation rules)
   const handleFieldValueChange = (fieldId: string, newValue: string) => {
     const current = allFields.find(f => f.id === fieldId);
     if (current && current.value !== newValue) {
@@ -446,8 +788,32 @@ export default function App() {
         current.value || '',
         newValue
       );
+      setFieldInteractions(prev => {
+        const existing = prev[fieldId] || { edits: 0, selections: 0 };
+        return {
+          ...prev,
+          [fieldId]: {
+            ...existing,
+            edits: existing.edits + 1,
+            lastInteractedAt: new Date().toISOString(),
+          },
+        };
+      });
     }
     applyFieldValueInternal(fieldId, newValue);
+
+    // Evaluate active custom regex rule and surface a warning toast immediately on violation
+    const customRule = customValidationRules[fieldId];
+    if (customRule && customRule.enabled) {
+      const evalRes = evaluateCustomRegexRule(customRule, newValue);
+      if (evalRes.status === 'violation') {
+        showToast(
+          evalRes.message || `Value violates pattern /${customRule.pattern}/${customRule.flags}`,
+          'warning',
+          `Validation Warning — ${customRule.fieldCaption}`
+        );
+      }
+    }
   };
 
   // Autofill Sample Data
@@ -696,16 +1062,100 @@ export default function App() {
     showToast(`Bulk updated ${fieldIds.length} ${fieldIds.length === 1 ? 'field' : 'fields'} (${changes.join(', ')})`);
   };
 
-  // Export updated PDF with XFA modifications
+  const hasUnsavedMetadataChanges = useMemo(() => {
+    if (!manifest || !lastSavedMetadata) return false;
+    const current = toEditableMetadata(manifest.metadata);
+    const sameKeywords =
+      parseMetadataKeywords(current.keywords).join(', ') ===
+      parseMetadataKeywords(lastSavedMetadata.keywords).join(', ');
+    return (
+      current.title.trim() !== lastSavedMetadata.title.trim() ||
+      current.author.trim() !== lastSavedMetadata.author.trim() ||
+      current.subject.trim() !== lastSavedMetadata.subject.trim() ||
+      !sameKeywords ||
+      current.creator.trim() !== lastSavedMetadata.creator.trim() ||
+      current.producer.trim() !== lastSavedMetadata.producer.trim()
+    );
+  }, [manifest, lastSavedMetadata]);
+
+  // Update editable PDF metadata properties (live-synced with Save PDF, Preflight, and Resource Extractor)
+  const handleUpdateMetadata = useCallback((updates: Partial<EditablePdfMetadata>) => {
+    setManifest(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        metadata: {
+          ...prev.metadata,
+          ...updates,
+        },
+      };
+    });
+  }, []);
+
+  // Revert editable PDF metadata back to originally loaded document values
+  const handleRevertMetadata = useCallback(() => {
+    if (!originalMetadata) return;
+    setManifest(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        metadata: {
+          ...prev.metadata,
+          title: originalMetadata.title || undefined,
+          author: originalMetadata.author || undefined,
+          subject: originalMetadata.subject || undefined,
+          keywords: originalMetadata.keywords || undefined,
+          creator: originalMetadata.creator || undefined,
+          producer: originalMetadata.producer || undefined,
+        },
+      };
+    });
+    showToast('Reverted PDF metadata to original document values');
+  }, [originalMetadata, showToast]);
+
+  // Export updated PDF with XFA modifications and edited PDF metadata properties
   const handleExportPdf = async () => {
     if (!pdfBytes) return;
     setIsExportingPdf(true);
     try {
+      const editableMeta = manifest ? toEditableMetadata(manifest.metadata) : undefined;
+      const hadMetadataEdits = hasUnsavedMetadataChanges;
+
       const updatedPdfBytes = await saveUpdatedXfaPdf(
         pdfBytes,
         xfaPackets.datasetsXml || '',
-        xfaPackets.fullXdpXml
+        xfaPackets.fullXdpXml,
+        editableMeta
       );
+
+      if (editableMeta) {
+        const normalizedSaved: EditablePdfMetadata = {
+          title: editableMeta.title.trim(),
+          author: editableMeta.author.trim(),
+          subject: editableMeta.subject.trim(),
+          keywords: parseMetadataKeywords(editableMeta.keywords).join(', '),
+          creator: editableMeta.creator.trim(),
+          producer: editableMeta.producer.trim(),
+        };
+        setLastSavedMetadata(normalizedSaved);
+        setManifest(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            metadata: {
+              ...prev.metadata,
+              title: normalizedSaved.title || undefined,
+              author: normalizedSaved.author || undefined,
+              subject: normalizedSaved.subject || undefined,
+              keywords: normalizedSaved.keywords || undefined,
+              creator: normalizedSaved.creator || undefined,
+              producer: normalizedSaved.producer || undefined,
+              modificationDate: new Date().toLocaleString(),
+              fileSizeBytes: updatedPdfBytes.byteLength,
+            },
+          };
+        });
+      }
 
       const blob = new Blob([updatedPdfBytes as any], { type: 'application/pdf' });
       const baseName = filename.replace(/\.pdf$/i, '');
@@ -720,7 +1170,11 @@ export default function App() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      showToast(`Exported ${downloadName}`);
+      showToast(
+        hadMetadataEdits
+          ? `Exported ${downloadName} with updated PDF metadata`
+          : `Exported ${downloadName}`
+      );
     } catch (err: any) {
       console.error('Failed to export PDF:', err);
       showToast(`Export error: ${err.message}`);
@@ -780,21 +1234,30 @@ export default function App() {
     }
   };
 
-  const handleFixMetadata = () => {
+  const handleFixMetadata = useCallback(() => {
     if (!manifest) return;
-    const cleanTitle = filename.replace(/\.pdf$/i, '').replace(/_/g, ' ');
-    setManifest({
-      ...manifest,
-      metadata: {
-        ...manifest.metadata,
-        title: cleanTitle,
-        author: 'Authorized Form Signatory',
-        subject: 'Enterprise Registry Specification & Dynamic XFA Compliance',
-        producer: 'AcroXFA Dynamic PDF Engine',
-      },
+    const cleanTitle = filename.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').trim();
+    setManifest(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        metadata: {
+          ...prev.metadata,
+          title: prev.metadata.title?.trim() || cleanTitle,
+          author: prev.metadata.author?.trim() || 'Authorized Form Signatory',
+          subject:
+            prev.metadata.subject?.trim() ||
+            'Enterprise Registry Specification & Dynamic XFA Compliance',
+          keywords:
+            prev.metadata.keywords?.trim() ||
+            (prev.metadata.hasXfa ? 'XFA, PDF Form, Compliance' : 'PDF Document'),
+          creator: prev.metadata.creator?.trim() || 'AcroXFA Studio',
+          producer: prev.metadata.producer?.trim() || 'AcroXFA Dynamic PDF Engine',
+        },
+      };
     });
-    showToast('Applied standardized document metadata');
-  };
+    showToast('Applied standardized document metadata (save PDF to embed)');
+  }, [manifest, filename, showToast]);
 
   // Apply Page Reordering / Deletion / Rotation / Insertion from Page Organizer
   const handleApplyPageOrganization = useCallback(
@@ -821,6 +1284,7 @@ export default function App() {
 
         let finalPdfBytes = result.pdfBytes;
         let updatedPackets = xfaPackets;
+        const currentEditableMeta = manifest ? toEditableMetadata(manifest.metadata) : undefined;
 
         if (xfaPackets.templateXml || xfaPackets.datasetsXml || xfaPackets.fullXdpXml) {
           const newDatasetsXml = updateDatasetsXml(xfaPackets.datasetsXml, updatedFields);
@@ -835,7 +1299,19 @@ export default function App() {
             finalPdfBytes = await saveUpdatedXfaPdf(
               result.pdfBytes,
               newDatasetsXml,
-              updatedPackets.fullXdpXml
+              updatedPackets.fullXdpXml,
+              currentEditableMeta
+            );
+          } catch {
+            finalPdfBytes = result.pdfBytes;
+          }
+        } else if (currentEditableMeta) {
+          try {
+            finalPdfBytes = await saveUpdatedXfaPdf(
+              result.pdfBytes,
+              '',
+              undefined,
+              currentEditableMeta
             );
           } catch {
             finalPdfBytes = result.pdfBytes;
@@ -846,6 +1322,9 @@ export default function App() {
         setPdfBytes(finalPdfBytes);
         const refreshedManifest = await extractAllPdfResources(finalPdfBytes, updatedPackets);
         setManifest(refreshedManifest);
+        if (currentEditableMeta) {
+          setLastSavedMetadata(toEditableMetadata(refreshedManifest.metadata));
+        }
 
         // 4. Build concise summary toast
         const parts: string[] = [`${result.newPageCount} ${result.newPageCount === 1 ? 'page' : 'pages'}`];
@@ -861,7 +1340,7 @@ export default function App() {
         showToast(`Failed to apply page changes: ${err.message}`);
       }
     },
-    [subforms, xfaPackets]
+    [subforms, xfaPackets, manifest]
   );
 
   // Global Keyboard Shortcuts integration
@@ -872,6 +1351,7 @@ export default function App() {
       const tabLabels: Record<string, string> = {
         form: 'Visual Form Editor',
         fieldmap: 'Field Map & Dependency Graph',
+        diff: 'XFA Field Diff (Side-by-Side Comparison)',
         xml: 'XFA XML Data',
         preview: 'PDF Canvas & Fields',
         preflight: 'Preflight Audit',
@@ -976,6 +1456,26 @@ export default function App() {
           isProtocolHandlerActive={protocolSettings.enabled}
           onApplyPageOrganization={handleApplyPageOrganization}
           onLoadConvertedPdf={loadPdfData}
+          customValidationRules={customValidationRules}
+          onSaveCustomValidationRule={handleSaveCustomValidationRule}
+          onDeleteCustomValidationRule={handleDeleteCustomValidationRule}
+          onToggleCustomValidationRule={handleToggleCustomValidationRule}
+          fieldTagStore={fieldTagStore}
+          onCreateFieldTag={handleCreateFieldTag}
+          onUpdateFieldTag={handleUpdateFieldTag}
+          onDeleteFieldTag={handleDeleteFieldTag}
+          onToggleFieldTag={handleToggleFieldTag}
+          onBulkAssignFieldTag={handleBulkAssignFieldTag}
+          onBulkRemoveFieldTag={handleBulkRemoveFieldTag}
+          fieldInteractions={fieldInteractions}
+          onRecordFieldSelection={handleRecordFieldSelection}
+          onResetFieldInteractions={handleResetFieldInteractions}
+          originalMetadata={originalMetadata}
+          lastSavedMetadata={lastSavedMetadata}
+          hasUnsavedMetadataChanges={hasUnsavedMetadataChanges}
+          onUpdateMetadata={handleUpdateMetadata}
+          onRevertMetadata={handleRevertMetadata}
+          onFixMetadata={handleFixMetadata}
         />
 
         {/* Browser Default PDF & XFA Protocol Handler Modal */}
@@ -1005,11 +1505,39 @@ export default function App() {
         {/* Offline Mode Indicator */}
         <OfflineIndicator />
 
-        {/* Toast Notification */}
-        {toastMessage && (
-          <div className="fixed bottom-16 lg:bottom-6 right-4 sm:right-6 left-4 sm:left-auto z-50 bg-slate-900 border border-slate-700 text-slate-100 text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
-            <span className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
-            <span className="truncate">{toastMessage}</span>
+        {/* Toast Notification (Info & Validation Warning) */}
+        {toastState && (
+          <div
+            role={toastState.variant === 'warning' ? 'alert' : 'status'}
+            className={`fixed bottom-16 lg:bottom-6 right-4 sm:right-6 left-4 sm:left-auto z-50 max-w-md text-xs px-4 py-2.5 rounded-xl shadow-2xl flex items-start gap-2.5 animate-in fade-in slide-in-from-bottom-2 duration-150 border ${
+              toastState.variant === 'warning'
+                ? 'bg-amber-950/95 border-amber-500/80 text-amber-100 ring-1 ring-amber-400/30'
+                : 'bg-slate-900 border-slate-700 text-slate-100'
+            }`}
+          >
+            {toastState.variant === 'warning' ? (
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            ) : (
+              <span className="w-2 h-2 rounded-full bg-red-400 shrink-0 mt-1.5" />
+            )}
+            <div className="flex-1 min-w-0">
+              {toastState.title && (
+                <div className="font-bold text-amber-300 leading-tight mb-0.5">
+                  {toastState.title}
+                </div>
+              )}
+              <div className={toastState.variant === 'warning' ? 'leading-snug text-amber-100' : 'truncate'}>
+                {toastState.message}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setToastState(null)}
+              className="p-0.5 rounded text-slate-400 hover:text-white shrink-0 cursor-pointer"
+              aria-label="Dismiss notification"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
       </>
@@ -1043,6 +1571,7 @@ export default function App() {
         onLoadAttachedXfa={handleLoadAttachedXfa}
         onOpenProtocolHandler={() => setIsProtocolModalOpen(true)}
         isProtocolHandlerActive={protocolSettings.enabled}
+        hasUnsavedMetadataChanges={hasUnsavedMetadataChanges}
       />
 
       {/* Document Information & Control Toolbar */}
@@ -1051,6 +1580,7 @@ export default function App() {
         metadata={manifest?.metadata || null}
         pdfBytes={pdfBytes}
         fields={allFields}
+        subforms={subforms}
         onApplyPageOrganization={handleApplyPageOrganization}
         onLoadConvertedPdf={loadPdfData}
         onShowToast={showToast}
@@ -1064,6 +1594,8 @@ export default function App() {
         onExportXml={handleExportXml}
         onExportJson={handleExportJson}
         onSwitchToConvert={() => setActiveTab('convert')}
+        onOpenMetadataEditor={() => setActiveTab('metadata')}
+        hasUnsavedMetadataChanges={hasUnsavedMetadataChanges}
         hasXfa={hasXfa}
         totalFieldsCount={allFields.length}
         completedFieldsCount={completedFieldsCount}
@@ -1105,6 +1637,17 @@ export default function App() {
                 subforms={subforms}
                 allFields={allFields}
                 templateXml={xfaPackets.templateXml}
+                customValidationRules={customValidationRules}
+                onSaveCustomValidationRule={handleSaveCustomValidationRule}
+                onDeleteCustomValidationRule={handleDeleteCustomValidationRule}
+                onToggleCustomValidationRule={handleToggleCustomValidationRule}
+                fieldTagStore={fieldTagStore}
+                onCreateFieldTag={handleCreateFieldTag}
+                onUpdateFieldTag={handleUpdateFieldTag}
+                onDeleteFieldTag={handleDeleteFieldTag}
+                onToggleFieldTag={handleToggleFieldTag}
+                onBulkAssignFieldTag={handleBulkAssignFieldTag}
+                onBulkRemoveFieldTag={handleBulkRemoveFieldTag}
                 onNavigateToField={fieldId => {
                   setTargetFieldId(fieldId);
                   setActiveTab('preview');
@@ -1124,11 +1667,38 @@ export default function App() {
               />
             )}
 
+            {activeTab === 'diff' && (
+              <FieldDiffView
+                currentFilename={filename}
+                currentPdfBytes={pdfBytes}
+                currentFields={allFields}
+                currentSubforms={subforms}
+                currentHasXfa={hasXfa}
+                currentPageCount={manifest?.metadata?.pageCount || 1}
+                onShowToast={showToast}
+              />
+            )}
+
             {activeTab === 'xml' && (
               <XmlEditor
                 packets={xfaPackets}
                 onApplyXmlChanges={handleApplyXmlChanges}
                 onExportXmlFile={(content, name) => exportDataAsFile(content, name, 'application/xml')}
+              />
+            )}
+
+            {activeTab === 'metadata' && (
+              <MetadataEditorPanel
+                filename={filename}
+                metadata={manifest?.metadata || null}
+                originalMetadata={originalMetadata}
+                lastSavedMetadata={lastSavedMetadata}
+                onUpdateMetadata={handleUpdateMetadata}
+                onRevertMetadata={handleRevertMetadata}
+                onStandardizeMetadata={handleFixMetadata}
+                onExportPdf={handleExportPdf}
+                isExportingPdf={isExportingPdf}
+                onShowToast={showToast}
               />
             )}
 
@@ -1139,6 +1709,7 @@ export default function App() {
                 onDownloadAllZip={handleDownloadAllZip}
                 isExportingZip={isExportingZip}
                 onShowToast={showToast}
+                onEditMetadata={() => setActiveTab('metadata')}
               />
             )}
 
@@ -1151,6 +1722,10 @@ export default function App() {
                 subforms={subforms}
                 targetFieldId={targetFieldId}
                 targetFieldTrigger={targetFieldTrigger}
+                fieldTagStore={fieldTagStore}
+                fieldInteractions={fieldInteractions}
+                onRecordFieldSelection={handleRecordFieldSelection}
+                onResetFieldInteractions={handleResetFieldInteractions}
                 onFieldValueChange={handleFieldValueChange}
                 onUpdateFieldAppearance={handleUpdateFieldAppearance}
                 onResetFieldAppearance={handleResetFieldAppearance}
@@ -1238,11 +1813,39 @@ export default function App() {
       {/* Offline Mode Indicator */}
       <OfflineIndicator />
 
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-16 md:bottom-6 right-4 sm:right-6 left-4 sm:left-auto z-50 bg-slate-900 border border-slate-700 text-slate-100 text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
-          <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0" />
-          <span className="truncate">{toastMessage}</span>
+      {/* Toast Notification (Info & Validation Warning) */}
+      {toastState && (
+        <div
+          role={toastState.variant === 'warning' ? 'alert' : 'status'}
+          className={`fixed bottom-16 md:bottom-6 right-4 sm:right-6 left-4 sm:left-auto z-50 max-w-md text-xs px-4 py-2.5 rounded-xl shadow-2xl flex items-start gap-2.5 animate-in fade-in slide-in-from-bottom-2 duration-150 border ${
+            toastState.variant === 'warning'
+              ? 'bg-amber-950/95 border-amber-500/80 text-amber-100 ring-1 ring-amber-400/30'
+              : 'bg-slate-900 border-slate-700 text-slate-100'
+          }`}
+        >
+          {toastState.variant === 'warning' ? (
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          ) : (
+            <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0 mt-1.5" />
+          )}
+          <div className="flex-1 min-w-0">
+            {toastState.title && (
+              <div className="font-bold text-amber-300 leading-tight mb-0.5">
+                {toastState.title}
+              </div>
+            )}
+            <div className={toastState.variant === 'warning' ? 'leading-snug text-amber-100' : 'truncate'}>
+              {toastState.message}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastState(null)}
+            className="p-0.5 rounded text-slate-400 hover:text-white shrink-0 cursor-pointer"
+            aria-label="Dismiss notification"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 

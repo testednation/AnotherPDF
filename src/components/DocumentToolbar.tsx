@@ -11,10 +11,13 @@ import {
   ExternalLink,
   LayoutGrid,
   FileCheck,
+  Camera,
+  Info,
 } from 'lucide-react';
-import { PdfDocumentMetadata, XFAField } from '../types/pdf';
+import { PdfDocumentMetadata, XFAField, XFASubform } from '../types/pdf';
 import { PageOrganizerModal } from './PageOrganizerModal';
 import { RegularPdfConvertModal } from './RegularPdfConvertModal';
+import { PrintImageGeneratorModal } from './PrintImageGeneratorModal';
 import { PageOrganizationResult } from '../utils/pageOrganizer';
 
 interface DocumentToolbarProps {
@@ -22,6 +25,7 @@ interface DocumentToolbarProps {
   metadata: PdfDocumentMetadata | null;
   pdfBytes?: Uint8Array | null;
   fields?: XFAField[];
+  subforms?: XFASubform[];
   onApplyPageOrganization?: (
     result: PageOrganizationResult,
     removeDeletedPageFields: boolean
@@ -38,6 +42,8 @@ interface DocumentToolbarProps {
   onExportXml: () => void;
   onExportJson: () => void;
   onSwitchToConvert?: () => void;
+  onOpenMetadataEditor?: () => void;
+  hasUnsavedMetadataChanges?: boolean;
   hasXfa: boolean;
   totalFieldsCount: number;
   completedFieldsCount: number;
@@ -48,6 +54,7 @@ export const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
   metadata,
   pdfBytes = null,
   fields = [],
+  subforms = [],
   onApplyPageOrganization,
   onLoadConvertedPdf,
   onShowToast,
@@ -61,6 +68,8 @@ export const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
   onExportXml,
   onExportJson,
   onSwitchToConvert,
+  onOpenMetadataEditor,
+  hasUnsavedMetadataChanges = false,
   hasXfa,
   totalFieldsCount,
   completedFieldsCount,
@@ -70,6 +79,7 @@ export const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [isPageOrganizerOpen, setIsPageOrganizerOpen] = useState(false);
   const [isStandardPdfModalOpen, setIsStandardPdfModalOpen] = useState(false);
+  const [isPrintImageModalOpen, setIsPrintImageModalOpen] = useState(false);
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -209,6 +219,37 @@ export const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
               <FileCheck className="w-3.5 h-3.5 text-red-400" />
               <span className="hidden md:inline">XFA → Standard PDF</span>
               <span className="md:hidden">Standard PDF</span>
+            </button>
+          )}
+
+          {/* High-Fidelity Print Form Image Snapshot Trigger */}
+          {pdfBytes && (
+            <button
+              type="button"
+              onClick={() => setIsPrintImageModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-medium text-emerald-200 bg-emerald-950/60 hover:bg-emerald-900/70 border border-emerald-600/50 rounded-md transition-colors cursor-pointer"
+              title="Generate a high-fidelity print-ready image representation of the current form state with live field values"
+            >
+              <Camera className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden md:inline">Print Image</span>
+              <span className="md:hidden">Snapshot</span>
+            </button>
+          )}
+
+          {/* Document Metadata Editor Quick Trigger */}
+          {pdfBytes && onOpenMetadataEditor && (
+            <button
+              type="button"
+              onClick={onOpenMetadataEditor}
+              className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-medium rounded-md border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                hasUnsavedMetadataChanges
+                  ? 'text-amber-200 bg-amber-950/60 hover:bg-amber-900/70 border-amber-500/60'
+                  : 'text-slate-200 bg-slate-800 hover:bg-slate-700 border-slate-700'
+              }`}
+              title="Edit standard PDF metadata properties (Title, Author, Subject, Keywords)"
+            >
+              <Info className={`w-3.5 h-3.5 ${hasUnsavedMetadataChanges ? 'text-amber-400' : 'text-sky-400'}`} />
+              <span>Metadata{hasUnsavedMetadataChanges ? ' *' : ''}</span>
             </button>
           )}
 
@@ -360,6 +401,19 @@ export const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
             </button>
           )}
 
+          {pdfBytes && (
+            <button
+              onClick={() => {
+                setIsPrintImageModalOpen(true);
+                setMobileDrawerOpen(false);
+              }}
+              className="px-2.5 py-2 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-600/50 text-emerald-200 font-semibold flex items-center gap-1.5 truncate"
+            >
+              <Camera className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="truncate">Print Form Image</span>
+            </button>
+          )}
+
           {onLoadAttachedXfa && (
             <button
               onClick={() => {
@@ -484,6 +538,19 @@ export const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
           fields={fields}
           onShowToast={onShowToast}
           onLoadConvertedPdf={onLoadConvertedPdf}
+        />
+      )}
+
+      {/* High-Fidelity Print Form Image Generator Modal */}
+      {pdfBytes && (
+        <PrintImageGeneratorModal
+          isOpen={isPrintImageModalOpen}
+          onClose={() => setIsPrintImageModalOpen(false)}
+          pdfBytes={pdfBytes}
+          filename={filename}
+          fields={fields}
+          subforms={subforms}
+          onShowToast={onShowToast}
         />
       )}
     </div>

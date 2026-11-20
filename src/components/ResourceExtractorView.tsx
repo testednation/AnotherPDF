@@ -37,6 +37,7 @@ interface ResourceExtractorViewProps {
   onDownloadAllZip: () => void;
   isExportingZip: boolean;
   onShowToast?: (msg: string) => void;
+  onEditMetadata?: () => void;
 }
 
 export const ResourceExtractorView: React.FC<ResourceExtractorViewProps> = ({
@@ -45,6 +46,7 @@ export const ResourceExtractorView: React.FC<ResourceExtractorViewProps> = ({
   onDownloadAllZip,
   isExportingZip,
   onShowToast,
+  onEditMetadata,
 }) => {
   const [activeCategory, setActiveCategory] = useState<'images' | 'fonts' | 'attachments' | 'xfa' | 'text' | 'metadata'>('images');
   const [searchFilter, setSearchFilter] = useState('');
@@ -1134,7 +1136,18 @@ export const ResourceExtractorView: React.FC<ResourceExtractorViewProps> = ({
               Extract PDF catalog dictionaries, producer info, and creation stamps
             </span>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {onEditMetadata && (
+                <button
+                  type="button"
+                  onClick={onEditMetadata}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-sky-200 bg-sky-950/70 hover:bg-sky-900/80 border border-sky-600/60 rounded-md transition-colors cursor-pointer"
+                >
+                  <Info className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Edit Metadata</span>
+                </button>
+              )}
+
               <button
                 onClick={() => {
                   const jsonStr = JSON.stringify(manifest.metadata, null, 2);
@@ -1174,12 +1187,24 @@ export const ResourceExtractorView: React.FC<ResourceExtractorViewProps> = ({
                 <span className="col-span-2 text-slate-200">{manifest.metadata.subject || 'Not specified'}</span>
               </div>
               <div className="grid grid-cols-3 p-4">
+                <span className="text-slate-400 font-mono">Keywords</span>
+                <span className="col-span-2 text-slate-200">{manifest.metadata.keywords || 'None'}</span>
+              </div>
+              <div className="grid grid-cols-3 p-4">
+                <span className="text-slate-400 font-mono">Creator Application</span>
+                <span className="col-span-2 text-slate-200 font-mono">{manifest.metadata.creator || 'Not specified'}</span>
+              </div>
+              <div className="grid grid-cols-3 p-4">
                 <span className="text-slate-400 font-mono">Producer / Engine</span>
                 <span className="col-span-2 text-slate-200 font-mono">{manifest.metadata.producer || 'Not specified'}</span>
               </div>
               <div className="grid grid-cols-3 p-4">
                 <span className="text-slate-400 font-mono">Creation Date</span>
-                <span className="col-span-2 text-slate-200 font-mono">{manifest.metadata.creationDate || 'Not specified'}</span>
+                <span className="col-span-2 text-slate-200 font-mono tabular-nums">{manifest.metadata.creationDate || 'Not specified'}</span>
+              </div>
+              <div className="grid grid-cols-3 p-4">
+                <span className="text-slate-400 font-mono">Modified Date</span>
+                <span className="col-span-2 text-slate-200 font-mono tabular-nums">{manifest.metadata.modificationDate || 'Not specified'}</span>
               </div>
               <div className="grid grid-cols-3 p-4">
                 <span className="text-slate-400 font-mono">XFA Architecture</span>

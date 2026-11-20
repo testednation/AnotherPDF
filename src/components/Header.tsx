@@ -16,14 +16,17 @@ import {
   X,
   CheckSquare,
   ChevronDown,
+  GitCompareArrows,
+  Info,
 } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { GlobalFieldSearch } from './GlobalFieldSearch';
 import { XFAField } from '../types/pdf';
+import { WorkspaceTab } from '../hooks/useGlobalShortcuts';
 
 interface HeaderProps {
-  activeTab: 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch' | 'fieldmap' | 'assistant';
-  setActiveTab: (tab: 'form' | 'xml' | 'resources' | 'preview' | 'preflight' | 'convert' | 'batch' | 'fieldmap' | 'assistant') => void;
+  activeTab: WorkspaceTab;
+  setActiveTab: (tab: WorkspaceTab) => void;
   onExportPdf: () => void;
   onDownloadAllResources: () => void;
   onOpenPrintScale?: () => void;
@@ -44,6 +47,7 @@ interface HeaderProps {
   onLoadAttachedXfa?: () => void;
   onOpenProtocolHandler?: () => void;
   isProtocolHandlerActive?: boolean;
+  hasUnsavedMetadataChanges?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -69,6 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
   onLoadAttachedXfa,
   onOpenProtocolHandler,
   isProtocolHandlerActive = false,
+  hasUnsavedMetadataChanges = false,
 }) => {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
@@ -430,6 +435,40 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('metadata')}
+            title="Edit standard PDF metadata properties (Title, Author, Subject, Keywords)"
+            className={`px-2.5 sm:px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'metadata'
+                ? 'bg-sky-950/80 text-sky-300 font-semibold shadow-xs border border-sky-600/60'
+                : 'hover:text-slate-100 hover:bg-slate-800/50'
+            }`}
+          >
+            <Info className="w-3.5 h-3.5 text-sky-400" />
+            <span>Metadata</span>
+            {hasUnsavedMetadataChanges && (
+              <span className="text-[10px] font-mono text-amber-300" title="Unsaved metadata changes">
+                *
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('diff')}
+            title="Compare two XFA PDFs side by side and highlight field discrepancies"
+            className={`px-2.5 sm:px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
+              activeTab === 'diff'
+                ? 'bg-emerald-950/70 text-emerald-300 font-semibold shadow-xs border border-emerald-600/60'
+                : 'hover:text-slate-100 hover:bg-slate-800/50'
+            }`}
+          >
+            <GitCompareArrows className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Field Diff</span>
+            <span className="hidden xl:inline text-[10px] px-1.5 py-0.2 bg-rose-950/70 text-rose-300 border border-rose-800/70 rounded font-mono">
+              A vs B
+            </span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('assistant')}
             title="Smart Form Assistant: AI Autofill & Context Suggestions (Alt + A)"
             className={`px-2.5 sm:px-3 py-1.5 rounded-md transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 ${
@@ -606,7 +645,7 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={() => setMobileMoreTabsOpen(prev => !prev)}
           className={`flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${
-            mobileMoreTabsOpen || ['fieldmap', 'preflight', 'resources', 'xml'].includes(activeTab)
+            mobileMoreTabsOpen || ['fieldmap', 'metadata', 'diff', 'preflight', 'resources', 'xml'].includes(activeTab)
               ? 'text-amber-400 bg-amber-500/15 font-semibold'
               : 'text-slate-400 hover:text-slate-200'
           }`}
@@ -649,6 +688,34 @@ export const Header: React.FC<HeaderProps> = ({
                 <div>
                   <div className="font-semibold text-slate-100">Field Map</div>
                   <div className="text-[10px] text-slate-400">Dependency Graph</div>
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('metadata');
+                  setMobileMoreTabsOpen(false);
+                }}
+                className="p-3 rounded-xl bg-sky-950/60 hover:bg-sky-900/60 border border-sky-700/60 flex items-center gap-2.5 text-left"
+              >
+                <Info className="w-4 h-4 text-sky-400 shrink-0" />
+                <div>
+                  <div className="font-semibold text-sky-200">
+                    PDF Metadata{hasUnsavedMetadataChanges ? ' *' : ''}
+                  </div>
+                  <div className="text-[10px] text-sky-300/80">Title, Author, Keywords</div>
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('diff');
+                  setMobileMoreTabsOpen(false);
+                }}
+                className="p-3 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-700/60 flex items-center gap-2.5 text-left"
+              >
+                <GitCompareArrows className="w-4 h-4 text-emerald-400 shrink-0" />
+                <div>
+                  <div className="font-semibold text-emerald-200">Field Diff</div>
+                  <div className="text-[10px] text-emerald-300/80">Compare 2 XFA PDFs</div>
                 </div>
               </button>
               <button

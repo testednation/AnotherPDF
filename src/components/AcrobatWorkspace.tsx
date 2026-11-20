@@ -43,8 +43,12 @@ import {
   Network,
   Globe,
   LayoutGrid,
+  Camera,
+  GitCompareArrows,
+  Tag,
+  Info,
 } from 'lucide-react';
-import { XFAField, XFASubform, ExtractedResourceManifest } from '../types/pdf';
+import { XFAField, XFASubform, ExtractedResourceManifest, EditablePdfMetadata } from '../types/pdf';
 import { validateAllFields } from '../utils/validationEngine';
 import { HistoryEntry } from '../hooks/useFormHistory';
 import { PdfCanvasViewer } from './PdfCanvasViewer';
@@ -55,12 +59,25 @@ import { ResourceExtractorView } from './ResourceExtractorView';
 import { BatchProcessorView } from './BatchProcessorView';
 import { XmlEditor } from './XmlEditor';
 import { FieldMapPanel } from './FieldMapPanel';
+import { FieldDiffView } from './FieldDiffView';
+import { MetadataEditorPanel } from './MetadataEditorPanel';
 import { SmartFormAssistant } from './SmartFormAssistant';
 import { PrintScaleModal } from './PrintScaleModal';
 import { PageOrganizerModal } from './PageOrganizerModal';
 import { RegularPdfConvertModal } from './RegularPdfConvertModal';
+import { PrintImageGeneratorModal } from './PrintImageGeneratorModal';
 import { GlobalFieldSearch } from './GlobalFieldSearch';
 import { PageOrganizationResult } from '../utils/pageOrganizer';
+import { CustomFieldRegexRule } from '../utils/customValidationRules';
+import {
+  FieldTagDefinition,
+  FieldTagStore,
+  TagColorKey,
+  TAG_COLOR_PALETTE,
+  getFieldTagDefinitions,
+  matchesFieldTagFilter,
+} from '../utils/fieldTags';
+import { FieldInteractionMap } from '../utils/fieldHeatmap';
 import { PreflightSummary } from '../types/preflight';
 
 interface AcrobatWorkspaceProps {
@@ -106,10 +123,30 @@ interface AcrobatWorkspaceProps {
     removeDeletedPageFields: boolean
   ) => Promise<void> | void;
   onLoadConvertedPdf?: (bytes: Uint8Array, filename: string) => void;
+  customValidationRules?: Record<string, CustomFieldRegexRule>;
+  onSaveCustomValidationRule?: (rule: CustomFieldRegexRule) => void;
+  onDeleteCustomValidationRule?: (fieldId: string) => void;
+  onToggleCustomValidationRule?: (fieldId: string, enabled: boolean) => void;
+  fieldTagStore?: FieldTagStore;
+  onCreateFieldTag?: (name: string, color: TagColorKey, description?: string) => FieldTagDefinition | null;
+  onUpdateFieldTag?: (tagId: string, updates: { name?: string; color?: TagColorKey; description?: string }) => void;
+  onDeleteFieldTag?: (tagId: string) => void;
+  onToggleFieldTag?: (fieldId: string, tagId: string) => void;
+  onBulkAssignFieldTag?: (fieldIds: string[], tagId: string) => void;
+  onBulkRemoveFieldTag?: (fieldIds: string[], tagId: string) => void;
+  fieldInteractions?: FieldInteractionMap;
+  onRecordFieldSelection?: (fieldId: string) => void;
+  onResetFieldInteractions?: () => void;
+  originalMetadata?: EditablePdfMetadata | null;
+  lastSavedMetadata?: EditablePdfMetadata | null;
+  hasUnsavedMetadataChanges?: boolean;
+  onUpdateMetadata?: (updates: Partial<EditablePdfMetadata>) => void;
+  onRevertMetadata?: () => void;
+  onFixMetadata?: () => void;
 }
 
 type LeftPanelTab = 'none' | 'thumbnails' | 'bookmarks' | 'fields' | 'attachments';
-type RightToolType = 'none' | 'formEditor' | 'export' | 'preflight' | 'convert' | 'resources' | 'xml' | 'batch' | 'fieldMap' | 'assistant';
+type RightToolType = 'none' | 'formEditor' | 'export' | 'preflight' | 'convert' | 'resources' | 'xml' | 'batch' | 'fieldMap' | 'assistant' | 'diff' | 'metadata';
 
 export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
   pdfBytes,
@@ -151,6 +188,26 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
   isProtocolHandlerActive = false,
   onApplyPageOrganization,
   onLoadConvertedPdf,
+  customValidationRules = {},
+  onSaveCustomValidationRule,
+  onDeleteCustomValidationRule,
+  onToggleCustomValidationRule,
+  fieldTagStore,
+  onCreateFieldTag,
+  onUpdateFieldTag,
+  onDeleteFieldTag,
+  onToggleFieldTag,
+  onBulkAssignFieldTag,
+  onBulkRemoveFieldTag,
+  fieldInteractions,
+  onRecordFieldSelection,
+  onResetFieldInteractions,
+  originalMetadata = null,
+  lastSavedMetadata = null,
+  hasUnsavedMetadataChanges = false,
+  onUpdateMetadata,
+  onRevertMetadata,
+  onFixMetadata,
 }) => {
   // Navigation & Tool panels state (default leftPanel to closed on mobile/tablet so PDF canvas has 100% width)
   const [leftPanel, setLeftPanel] = useState<LeftPanelTab>(() =>
@@ -170,15 +227,27 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
   const [printScaleModalOpen, setPrintScaleModalOpen] = useState(false);
   const [pageOrganizerOpen, setPageOrganizerOpen] = useState(false);
   const [regularPdfModalOpen, setRegularPdfModalOpen] = useState(false);
+  const [printImageModalOpen, setPrintImageModalOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [leftFieldsFilter, setLeftFieldsFilter] = useState('');
+  const [leftSelectedTagIds, setLeftSelectedTagIds] = useState<string[]>([]);
   const [urlInput, setUrlInput] = useState('https://www.canada.ca/content/dam/pch/documents/services/funding/book-fund/cBF-FinRepDatFrm-eng.pdf');
+
+  useEffect(() => {
+    if (!fieldTagStore) return;
+    const validIds = new Set(fieldTagStore.definitions.map(d => d.id));
+    setLeftSelectedTagIds(prev => {
+      const next = prev.filter(id => validIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [fieldTagStore]);
 
   // Navigate to a field on the PDF Canvas
   const handleLocateField = (field: XFAField) => {
     if (onSelectField) {
       onSelectField(field);
     } else {
+      onRecordFieldSelection?.(field.id);
       const label = field.caption || field.name;
       const page = field.bounds?.pageNumber || 1;
       onShowToast(`Located "${label}" (Page ${page})`);
@@ -536,6 +605,18 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                 </button>
                 <button
                   onClick={() => {
+                    setRightTool('metadata');
+                    setActiveMenu(null);
+                  }}
+                  className="w-full text-left px-3 py-1.5 hover:bg-[#3a3a3a] text-sky-300 flex items-center justify-between cursor-pointer"
+                >
+                  <span>Document Properties / Metadata...</span>
+                  <span className="text-[10px] font-mono text-sky-400">
+                    {hasUnsavedMetadataChanges ? 'Mod' : 'Info'}
+                  </span>
+                </button>
+                <button
+                  onClick={() => {
                     onExportPdf();
                     setActiveMenu(null);
                   }}
@@ -833,6 +914,20 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
             <span className="hidden md:inline">Field Map</span>
           </button>
 
+          {/* Side-by-Side Field Diff Quick Button */}
+          <button
+            onClick={() => setRightTool(rightTool === 'diff' ? 'none' : 'diff')}
+            className={`hidden sm:flex px-2.5 py-1 rounded items-center gap-1.5 text-xs font-medium transition-colors shrink-0 ${
+              rightTool === 'diff'
+                ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/80'
+                : 'bg-[#404040] text-slate-300 hover:bg-[#4a4a4a]'
+            }`}
+            title="Compare two XFA PDFs side by side and highlight field value discrepancies"
+          >
+            <GitCompareArrows className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden md:inline">Field Diff</span>
+          </button>
+
           {/* Undo & Redo Quick Tools */}
           <button
             onClick={onUndo}
@@ -900,6 +995,16 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
           >
             <Printer className="w-3.5 h-3.5 text-sky-400" />
             <span>Scale Print Size</span>
+          </button>
+
+          {/* High-Fidelity Print Form Image Snapshot */}
+          <button
+            onClick={() => setPrintImageModalOpen(true)}
+            className="hidden sm:flex px-2.5 py-1 rounded bg-emerald-950/90 hover:bg-emerald-900 border border-emerald-700/80 text-emerald-200 items-center gap-1.5 text-xs transition-colors shadow-xs shrink-0"
+            title="Generate a high-fidelity print-ready image representation of the current form state with live field values"
+          >
+            <Camera className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Print Image</span>
           </button>
 
           <button
@@ -1077,72 +1182,184 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
-              {leftPanel === 'fields' && (
-                <div className="space-y-2">
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <input
-                      type="text"
-                      value={leftFieldsFilter}
-                      onChange={e => setLeftFieldsFilter(e.target.value)}
-                      placeholder={`Filter ${fields.length} fields...`}
-                      className="w-full pl-8 pr-7 py-1.5 bg-[#181818] border border-[#3e3e3e] focus:border-sky-500 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
-                    />
-                    {leftFieldsFilter && (
-                      <button
-                        type="button"
-                        onClick={() => setLeftFieldsFilter('')}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-slate-400 pb-1 border-b border-[#333]">
-                    {fields.length} detected fields across {subforms.length} subforms
-                  </div>
-                  {fields
-                    .filter(f => {
-                      const q = leftFieldsFilter.toLowerCase().trim();
-                      if (!q) return true;
-                      return (
-                        f.name.toLowerCase().includes(q) ||
-                        (f.caption && f.caption.toLowerCase().includes(q)) ||
-                        (f.value && f.value.toLowerCase().includes(q)) ||
-                        (f.parentSubform && f.parentSubform.toLowerCase().includes(q))
-                      );
-                    })
-                    .map(f => (
-                      <div
-                        key={f.id}
-                        onClick={() => {
-                          handleLocateField(f);
-                          if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-                            setLeftPanel('none');
-                          }
-                        }}
-                        className="p-2.5 rounded-lg bg-[#2a2a2a] hover:bg-[#353535] border border-[#383838] cursor-pointer transition-colors space-y-1"
-                      >
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="font-semibold text-slate-200 truncate pr-1">
-                            {f.caption || f.name}
+              {leftPanel === 'fields' && (() => {
+                const availableTags = fieldTagStore?.definitions || [];
+                const filteredLeftFields = fields.filter(f => {
+                  if (
+                    leftSelectedTagIds.length > 0 &&
+                    !matchesFieldTagFilter(fieldTagStore, f.id, leftSelectedTagIds, 'any', false)
+                  ) {
+                    return false;
+                  }
+                  const q = leftFieldsFilter.toLowerCase().trim();
+                  if (!q) return true;
+                  const fTags = getFieldTagDefinitions(fieldTagStore, f.id);
+                  return (
+                    f.name.toLowerCase().includes(q) ||
+                    (f.caption && f.caption.toLowerCase().includes(q)) ||
+                    (f.value && f.value.toLowerCase().includes(q)) ||
+                    (f.parentSubform && f.parentSubform.toLowerCase().includes(q)) ||
+                    fTags.some(t => t.name.toLowerCase().includes(q))
+                  );
+                });
+
+                return (
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={leftFieldsFilter}
+                        onChange={e => setLeftFieldsFilter(e.target.value)}
+                        placeholder={`Filter ${fields.length} fields or tags...`}
+                        className="w-full pl-8 pr-7 py-1.5 bg-[#181818] border border-[#3e3e3e] focus:border-sky-500 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
+                      />
+                      {leftFieldsFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setLeftFieldsFilter('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Custom Tag Filter Bar inside Left Fields Sidebar */}
+                    {availableTags.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-center justify-between text-[10px] text-slate-400">
+                          <span className="flex items-center gap-1">
+                            <Tag className="w-3 h-3 text-sky-400" />
+                            <span>Filter by tag</span>
                           </span>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-[#1e1e1e] text-slate-400 border border-[#383838]">
-                              P{f.bounds?.pageNumber || 1}
-                            </span>
-                            <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-[#1e1e1e] text-sky-400 border border-[#444]">
-                              {f.type}
-                            </span>
-                          </div>
+                          {leftSelectedTagIds.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setLeftSelectedTagIds([])}
+                              className="text-sky-400 hover:text-sky-300 cursor-pointer"
+                            >
+                              Clear
+                            </button>
+                          )}
                         </div>
-                        <div className="text-[11px] text-slate-400 font-mono truncate">
-                          {f.value || <span className="text-slate-600 italic">Empty</span>}
+                        <div className="flex flex-wrap gap-1">
+                          {availableTags.map(tag => {
+                            const style = TAG_COLOR_PALETTE[tag.color] || TAG_COLOR_PALETTE.sky;
+                            const isActive = leftSelectedTagIds.includes(tag.id);
+                            return (
+                              <button
+                                key={tag.id}
+                                type="button"
+                                onClick={() =>
+                                  setLeftSelectedTagIds(prev =>
+                                    prev.includes(tag.id)
+                                      ? prev.filter(id => id !== tag.id)
+                                      : [...prev, tag.id]
+                                  )
+                                }
+                                className={`px-1.5 py-0.5 rounded border text-[10px] font-medium flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap ${
+                                  isActive
+                                    ? style.activeBtnClass
+                                    : 'bg-[#1c1c1c] border-[#383838] text-slate-300 hover:border-slate-500'
+                                }`}
+                              >
+                                <span
+                                  className="w-1.5 h-1.5 rounded-xs shrink-0"
+                                  style={{ backgroundColor: style.hex }}
+                                />
+                                <span>{tag.name}</span>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
-                    ))}
-                </div>
-              )}
+                    )}
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 pb-1 border-b border-[#333] tabular-nums">
+                      <span>
+                        {filteredLeftFields.length} of {fields.length} fields
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setRightTool('fieldMap')}
+                        className="text-[10px] text-sky-400 hover:text-sky-300 cursor-pointer"
+                        title="Manage custom field tags in Field Map"
+                      >
+                        Manage tags
+                      </button>
+                    </div>
+
+                    {filteredLeftFields.length === 0 ? (
+                      <div className="py-6 px-3 text-center space-y-2 bg-[#1c1c1c] rounded-lg border border-[#333]">
+                        <p className="text-xs text-slate-300">No matching fields</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLeftFieldsFilter('');
+                            setLeftSelectedTagIds([]);
+                          }}
+                          className="px-2.5 py-1 text-[11px] bg-[#2f2f2f] hover:bg-[#3b3b3b] text-sky-300 rounded cursor-pointer"
+                        >
+                          Reset filters
+                        </button>
+                      </div>
+                    ) : (
+                      filteredLeftFields.map(f => {
+                        const fTags = getFieldTagDefinitions(fieldTagStore, f.id);
+                        return (
+                          <div
+                            key={f.id}
+                            onClick={() => {
+                              handleLocateField(f);
+                              if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+                                setLeftPanel('none');
+                              }
+                            }}
+                            className="p-2.5 rounded-lg bg-[#2a2a2a] hover:bg-[#353535] border border-[#383838] cursor-pointer transition-colors space-y-1"
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-semibold text-slate-200 truncate pr-1">
+                                {f.caption || f.name}
+                              </span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className="text-[9px] font-mono tabular-nums px-1 py-0.2 rounded bg-[#1e1e1e] text-slate-400 border border-[#383838]">
+                                  P{f.bounds?.pageNumber || 1}
+                                </span>
+                                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-[#1e1e1e] text-sky-400 border border-[#444]">
+                                  {f.type}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-[11px] text-slate-400 font-mono truncate">
+                              {f.value || <span className="text-slate-600 italic">Empty</span>}
+                            </div>
+                            {fTags.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[10px] text-slate-300">
+                                {fTags.map((tag, idx) => {
+                                  const style = TAG_COLOR_PALETTE[tag.color] || TAG_COLOR_PALETTE.sky;
+                                  return (
+                                    <span key={tag.id} className="inline-flex items-center gap-1">
+                                      <span
+                                        className="w-1.5 h-1.5 rounded-xs shrink-0"
+                                        style={{ backgroundColor: style.hex }}
+                                      />
+                                      <span className="truncate max-w-[90px]">{tag.name}</span>
+                                      {idx < fTags.length - 1 && (
+                                        <span aria-hidden="true" className="text-slate-600">·</span>
+                                      )}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                );
+              })()}
 
               {leftPanel === 'bookmarks' && (
                 <div className="space-y-2">
@@ -1188,6 +1405,10 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
             subforms={subforms}
             targetFieldId={targetFieldId}
             targetFieldTrigger={targetFieldTrigger}
+            fieldTagStore={fieldTagStore}
+            fieldInteractions={fieldInteractions}
+            onRecordFieldSelection={onRecordFieldSelection}
+            onResetFieldInteractions={onResetFieldInteractions}
             onFieldValueChange={onFieldValueChange}
             onUpdateFieldAppearance={onUpdateFieldAppearance}
             onResetFieldAppearance={onResetFieldAppearance}
@@ -1238,6 +1459,34 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
           >
             <Network className="w-4 h-4" />
             <span className="text-[9px]">Map</span>
+          </button>
+
+          <button
+            onClick={() => setRightTool(rightTool === 'diff' ? 'none' : 'diff')}
+            title="Compare Two XFA PDFs Side by Side (Field Diff)"
+            className={`p-2.5 rounded-lg transition-colors flex flex-col items-center gap-1 ${
+              rightTool === 'diff'
+                ? 'bg-emerald-600 text-white font-bold shadow-md'
+                : 'text-slate-300 hover:text-white hover:bg-[#333]'
+            }`}
+          >
+            <GitCompareArrows className="w-4 h-4" />
+            <span className="text-[9px]">Diff</span>
+          </button>
+
+          <button
+            onClick={() => setRightTool(rightTool === 'metadata' ? 'none' : 'metadata')}
+            title="Edit PDF Document Metadata (Title, Author, Subject, Keywords)"
+            className={`p-2.5 rounded-lg transition-colors flex flex-col items-center gap-1 cursor-pointer ${
+              rightTool === 'metadata'
+                ? 'bg-sky-600 text-white font-bold shadow-md'
+                : hasUnsavedMetadataChanges
+                ? 'text-amber-300 hover:text-white hover:bg-[#333]'
+                : 'text-slate-300 hover:text-white hover:bg-[#333]'
+            }`}
+          >
+            <Info className="w-4 h-4" />
+            <span className="text-[9px]">{hasUnsavedMetadataChanges ? 'Meta *' : 'Metadata'}</span>
           </button>
 
           <button
@@ -1308,11 +1557,13 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
 
         {/* Right Tool Drawer (Full-Screen Sheet on Mobile/Tablet, Docked Sidebar on Desktop) */}
         {rightTool !== 'none' && (
-          <div className={`fixed inset-x-0 top-11 bottom-14 z-40 w-full lg:static lg:z-10 ${rightTool === 'fieldMap' || rightTool === 'assistant' || rightTool === 'batch' ? 'lg:w-[760px] lg:max-w-[85vw]' : 'lg:w-96'} bg-[#222222] border-l border-[#383838] flex flex-col shrink-0 overflow-y-auto animate-in slide-in-from-right duration-150 shadow-2xl lg:shadow-none`}>
+          <div className={`fixed inset-x-0 top-11 bottom-14 z-40 w-full lg:static lg:z-10 ${rightTool === 'diff' ? 'lg:w-[920px] lg:max-w-[88vw]' : rightTool === 'fieldMap' || rightTool === 'assistant' || rightTool === 'batch' ? 'lg:w-[760px] lg:max-w-[85vw]' : rightTool === 'metadata' ? 'lg:w-[540px] lg:max-w-[85vw]' : 'lg:w-96'} bg-[#222222] border-l border-[#383838] flex flex-col shrink-0 overflow-y-auto animate-in slide-in-from-right duration-150 shadow-2xl lg:shadow-none`}>
             <div className="px-4 py-3 bg-[#1a1a1a] border-b border-[#333] flex items-center justify-between sticky top-0 z-20">
               <span className="text-xs font-semibold text-slate-200 uppercase tracking-wider truncate pr-2">
                 {rightTool === 'assistant' && 'Smart Form Assistant (Gemini)'}
                 {rightTool === 'fieldMap' && 'XFA Field Map & Dependency Graph'}
+                {rightTool === 'diff' && 'XFA Field Diff (Side-by-Side Comparison)'}
+                {rightTool === 'metadata' && 'PDF Document Metadata Editor'}
                 {rightTool === 'formEditor' && 'Interactive Form & Bulk Editor'}
                 {rightTool === 'export' && 'Export PDF & Form Data'}
                 {rightTool === 'preflight' && 'Preflight PDF Audit'}
@@ -1362,15 +1613,35 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                     subforms={subforms}
                     allFields={fields}
                     templateXml={xfaPackets.templateXml}
+                    customValidationRules={customValidationRules}
+                    onSaveCustomValidationRule={onSaveCustomValidationRule}
+                    onDeleteCustomValidationRule={onDeleteCustomValidationRule}
+                    onToggleCustomValidationRule={onToggleCustomValidationRule}
+                    fieldTagStore={fieldTagStore}
+                    onCreateFieldTag={onCreateFieldTag}
+                    onUpdateFieldTag={onUpdateFieldTag}
+                    onDeleteFieldTag={onDeleteFieldTag}
+                    onToggleFieldTag={onToggleFieldTag}
+                    onBulkAssignFieldTag={onBulkAssignFieldTag}
+                    onBulkRemoveFieldTag={onBulkRemoveFieldTag}
                     onNavigateToField={fieldId => {
                       const f = fields.find(item => item.id === fieldId);
-                      if (f) onFieldValueChange(fieldId, f.value);
+                      if (f && onSelectField) {
+                        onSelectField(f);
+                      }
                       setRightTool('none');
                       onShowToast(`Located field: ${f?.caption || f?.name || fieldId}`);
                     }}
                     onNavigateToFormEditor={fieldId => {
                       setRightTool('formEditor');
                       onShowToast('Switched to Form Editor');
+                      setTimeout(() => {
+                        const el = document.getElementById(`field-${fieldId}`);
+                        if (el) {
+                          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          el.focus();
+                        }
+                      }, 150);
                     }}
                   />
                 </div>
@@ -1451,13 +1722,29 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                 </div>
               )}
 
+              {rightTool === 'metadata' && (
+                <MetadataEditorPanel
+                  filename={filename}
+                  metadata={manifest?.metadata || null}
+                  originalMetadata={originalMetadata}
+                  lastSavedMetadata={lastSavedMetadata}
+                  onUpdateMetadata={updates => onUpdateMetadata?.(updates)}
+                  onRevertMetadata={() => onRevertMetadata?.()}
+                  onStandardizeMetadata={() => onFixMetadata?.()}
+                  onExportPdf={onExportPdf}
+                  isExportingPdf={isExportingPdf}
+                  onShowToast={onShowToast}
+                  compact
+                />
+              )}
+
               {rightTool === 'preflight' && (
                 <PreflightAuditView
                   summary={preflightSummary}
                   onRerunPreflight={() => {}}
                   onJumpToField={() => {}}
                   onAutofillField={onFieldValueChange}
-                  onFixMetadata={() => {}}
+                  onFixMetadata={onFixMetadata || (() => {})}
                 />
               )}
 
@@ -1482,6 +1769,7 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                   onDownloadAllZip={onDownloadAllZip}
                   isExportingZip={false}
                   onShowToast={onShowToast}
+                  onEditMetadata={() => setRightTool('metadata')}
                 />
               )}
 
@@ -1490,6 +1778,18 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                   packets={xfaPackets}
                   onApplyXmlChanges={onApplyXmlChanges}
                   onExportXmlFile={(content, name) => onExportXml()}
+                />
+              )}
+
+              {rightTool === 'diff' && (
+                <FieldDiffView
+                  currentFilename={filename}
+                  currentPdfBytes={pdfBytes}
+                  currentFields={fields}
+                  currentSubforms={subforms}
+                  currentHasXfa={hasXfa}
+                  currentPageCount={manifest?.metadata?.pageCount || 1}
+                  onShowToast={onShowToast}
                 />
               )}
 
@@ -1589,7 +1889,7 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
         <button
           onClick={() => setMobileToolsSheetOpen(prev => !prev)}
           className={`flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${
-            mobileToolsSheetOpen || ['batch', 'preflight', 'fieldMap', 'resources', 'xml', 'export'].includes(rightTool)
+            mobileToolsSheetOpen || ['batch', 'preflight', 'fieldMap', 'diff', 'resources', 'xml', 'export'].includes(rightTool)
               ? 'text-amber-400 bg-amber-500/15 font-semibold'
               : 'text-slate-400 hover:text-slate-200'
           }`}
@@ -1667,6 +1967,20 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
 
               <button
                 onClick={() => {
+                  setRightTool('diff');
+                  setMobileToolsSheetOpen(false);
+                }}
+                className="p-3 rounded-xl bg-emerald-950/50 hover:bg-emerald-900/60 border border-emerald-700/60 flex items-center gap-2.5 text-left"
+              >
+                <GitCompareArrows className="w-5 h-5 text-emerald-400 shrink-0" />
+                <div>
+                  <div className="font-semibold text-emerald-200">Field Diff</div>
+                  <div className="text-[10px] text-emerald-300/80">Compare 2 XFA PDFs</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
                   setPrintScaleModalOpen(true);
                   setMobileToolsSheetOpen(false);
                 }}
@@ -1704,6 +2018,22 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                 <div>
                   <div className="font-semibold text-slate-100">Raw XFA XML</div>
                   <div className="text-[10px] text-slate-400">Template &amp; Datasets</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setRightTool('metadata');
+                  setMobileToolsSheetOpen(false);
+                }}
+                className="p-3 rounded-xl bg-sky-950/60 hover:bg-sky-900/60 border border-sky-700/60 flex items-center gap-2.5 text-left"
+              >
+                <Info className="w-5 h-5 text-sky-400 shrink-0" />
+                <div>
+                  <div className="font-semibold text-sky-200">
+                    PDF Metadata{hasUnsavedMetadataChanges ? ' *' : ''}
+                  </div>
+                  <div className="text-[10px] text-sky-300/80">Title, Author, Keywords</div>
                 </div>
               </button>
 
@@ -1762,6 +2092,20 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                 <div>
                   <div className="font-semibold text-red-200">XFA → Standard PDF</div>
                   <div className="text-[10px] text-red-300/80">Retain fields &amp; data</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => {
+                  setPrintImageModalOpen(true);
+                  setMobileToolsSheetOpen(false);
+                }}
+                className="p-3 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-700/60 flex items-center gap-2.5 text-left"
+              >
+                <Camera className="w-5 h-5 text-emerald-400 shrink-0" />
+                <div>
+                  <div className="font-semibold text-emerald-200">Print Form Image</div>
+                  <div className="text-[10px] text-emerald-300/80">High-DPI live snapshot</div>
                 </div>
               </button>
 
@@ -1884,6 +2228,17 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
         fields={fields}
         onShowToast={onShowToast}
         onLoadConvertedPdf={onLoadConvertedPdf}
+      />
+
+      {/* High-Fidelity Print Form Image Generator Modal */}
+      <PrintImageGeneratorModal
+        isOpen={printImageModalOpen}
+        onClose={() => setPrintImageModalOpen(false)}
+        pdfBytes={pdfBytes}
+        filename={filename}
+        fields={fields}
+        subforms={subforms}
+        onShowToast={onShowToast}
       />
     </div>
   );

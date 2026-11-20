@@ -534,7 +534,7 @@ export function validateField(
   // 3. Custom regex pattern (if specified in validation rule)
   if (validation?.regexPattern) {
     try {
-      const rx = new RegExp(validation.regexPattern);
+      const rx = new RegExp(validation.regexPattern, validation.regexFlags || '');
       if (!rx.test(val)) {
         errors.push({
           id: `${field.id}_regex`,
@@ -544,8 +544,8 @@ export function validateField(
           subformName: field.parentSubform,
           severity: 'error',
           ruleType: 'regex',
-          message: validation.message || `Value fails validation pattern: ${validation.regexPattern}`,
-          ruleDescription: `RegExp constraint: ${validation.regexPattern}`,
+          message: validation.message || `Value fails validation pattern: /${validation.regexPattern}/${validation.regexFlags || ''}`,
+          ruleDescription: `Custom RegExp constraint: /${validation.regexPattern}/${validation.regexFlags || ''}`,
           expectedPattern: validation.regexPattern,
           actualValue: val,
         });

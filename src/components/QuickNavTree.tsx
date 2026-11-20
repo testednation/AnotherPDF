@@ -22,8 +22,15 @@ import {
   Layers,
   ArrowRight,
   Eye,
+  Tag,
 } from 'lucide-react';
 import { XFASubform, XFAField } from '../types/pdf';
+import {
+  FieldTagStore,
+  TAG_COLOR_PALETTE,
+  getFieldTagDefinitions,
+  matchesFieldTagFilter,
+} from '../utils/fieldTags';
 
 interface QuickNavTreeProps {
   subforms?: XFASubform[];
@@ -31,6 +38,7 @@ interface QuickNavTreeProps {
   selectedFieldId: string | null;
   onSelectField: (field: XFAField) => void;
   currentPage: number;
+  fieldTagStore?: FieldTagStore;
   onClose?: () => void;
 }
 
@@ -40,13 +48,24 @@ export const QuickNavTree: React.FC<QuickNavTreeProps> = ({
   selectedFieldId,
   onSelectField,
   currentPage,
+  fieldTagStore,
   onClose,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedNodes, setCollapsedNodes] = useState<Record<string, boolean>>({});
   const [filterType, setFilterType] = useState<string>('all');
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [onlyCurrentPage, setOnlyCurrentPage] = useState<boolean>(false);
   const selectedItemRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!fieldTagStore) return;
+    const validIds = new Set(fieldTagStore.definitions.map(d => d.id));
+    setSelectedTagIds(prev => {
+      const next = prev.filter(id => validIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [fieldTagStore]);
 
   // Normalize / fallback structure if subforms array is empty or fields are unassigned
   const structuredHierarchy = useMemo<XFASubform[]>(() => {
@@ -150,14 +169,22 @@ export const QuickNavTree: React.FC<QuickNavTreeProps> = ({
     if (onlyCurrentPage && (field.bounds?.pageNumber || 1) !== currentPage) {
       return false;
     }
+    if (
+      selectedTagIds.length > 0 &&
+      !matchesFieldTagFilter(fieldTagStore, field.id, selectedTagIds, 'any', false)
+    ) {
+      return false;
+    }
     if (!queryLower) return true;
 
+    const fieldTags = getFieldTagDefinitions(fieldTagStore, field.id);
     return (
       field.name.toLowerCase().includes(queryLower) ||
       field.caption.toLowerCase().includes(queryLower) ||
       (field.value ? field.value.toLowerCase().includes(queryLower) : false) ||
       (field.dataRef ? field.dataRef.toLowerCase().includes(queryLower) : false) ||
-      (field.parentSubform ? field.parentSubform.toLowerCase().includes(queryLower) : false)
+      (field.parentSubform ? field.parentSubform.toLowerCase().includes(queryLower) : false) ||
+      fieldTags.some(t => t.name.toLowerCase().includes(queryLower))
     );
   };
 
@@ -174,6 +201,7 @@ export const QuickNavTree: React.FC<QuickNavTreeProps> = ({
     }
 
     const subformMatchesQuery =
+      selectedTagIds.length === 0 &&
       queryLower.length > 0 &&
       (node.name.toLowerCase().includes(queryLower) || node.title.toLowerCase().includes(queryLower));
 
@@ -189,13 +217,13 @@ export const QuickNavTree: React.FC<QuickNavTreeProps> = ({
   };
 
   const filteredTree = useMemo(() => {
-    if (!queryLower && filterType === 'all' && !onlyCurrentPage) {
+    if (!queryLower && filterType === 'all' && !onlyCurrentPage && selectedTagIds.length === 0) {
       return structuredHierarchy;
     }
     return structuredHierarchy
       .map(node => filterSubform(node))
       .filter((n): n is XFASubform => n !== null);
-  }, [structuredHierarchy, queryLower, filterType, onlyCurrentPage]);
+  }, [structuredHierarchy, queryLower, filterType, onlyCurrentPage, selectedTagIds, fieldTagStore]);
 
   // Count total matching fields
   const totalMatchingFields = useMemo(() => {
@@ -328,6 +356,31 @@ export const QuickNavTree: React.FC<QuickNavTreeProps> = ({
                             </span>
                           )}
                         </div>
+
+                        {/* Inline Custom Tags */}
+                        {(() => {
+                          const fTags = getFieldTagDefinitions(fieldTagStore, field.id);
+                          if (fTags.length === 0) return null;
+                          return (
+                            <div className="flex flex-wrap items-center gap-1.5 mt-0.5 text-[10px] text-slate-300">
+                              {fTags.map((tag, idx) => {
+                                const style = TAG_COLOR_PALETTE[tag.color] || TAG_COLOR_PALETTE.sky;
+                                return (
+                                  <span key={tag.id} className="inline-flex items-center gap-1">
+                                    <span
+                                      className="w-1.5 h-1.5 rounded-xs shrink-0"
+                                      style={{ backgroundColor: style.hex }}
+                                    />
+                                    <span className="truncate max-w-[80px]">{tag.name}</span>
+                                    {idx < fTags.length - 1 && (
+                                      <span aria-hidden="true" className="text-slate-600">·</span>
+                                    )}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       {/* Page Tag */}
@@ -463,6 +516,55 @@ export const QuickNavTree: React.FC<QuickNavTreeProps> = ({
             <span>Page {currentPage} only</span>
           </label>
         </div>
+
+        {/* Custom Tag Filter Bar (when custom tags exist) */}
+        {fieldTagStore && fieldTagStore.definitions.length > 0 && (
+          <div className="pt-1.5 border-t border-slate-800/80 space-y-1">
+            <div className="flex items-center justify-between text-[10px] text-slate-400">
+              <span className="flex items-center gap-1">
+                <Tag className="w-3 h-3 text-sky-400" />
+                <span>Tags</span>
+              </span>
+              {selectedTagIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedTagIds([])}
+                  className="text-sky-400 hover:text-sky-300 cursor-pointer"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {fieldTagStore.definitions.map(tag => {
+                const style = TAG_COLOR_PALETTE[tag.color] || TAG_COLOR_PALETTE.sky;
+                const isActive = selectedTagIds.includes(tag.id);
+                return (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() =>
+                      setSelectedTagIds(prev =>
+                        prev.includes(tag.id)
+                          ? prev.filter(id => id !== tag.id)
+                          : [...prev, tag.id]
+                      )
+                    }
+                    className={`px-1.5 py-0.5 rounded border text-[10px] font-medium flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap ${
+                      isActive ? style.activeBtnClass : style.inactiveBtnClass
+                    }`}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-xs shrink-0"
+                      style={{ backgroundColor: style.hex }}
+                    />
+                    <span>{tag.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Hierarchical Tree View Scrollable Body */}
@@ -472,17 +574,18 @@ export const QuickNavTree: React.FC<QuickNavTreeProps> = ({
             <Search className="w-6 h-6 text-slate-600 mx-auto mb-2" />
             <p className="text-xs font-medium text-slate-400">No matching fields found</p>
             <p className="text-[11px] text-slate-500 mt-1">
-              Try adjusting your search query or type filter
+              Try adjusting your search query, type, or tag filter
             </p>
-            {(searchQuery || filterType !== 'all' || onlyCurrentPage) && (
+            {(searchQuery || filterType !== 'all' || onlyCurrentPage || selectedTagIds.length > 0) && (
               <button
                 type="button"
                 onClick={() => {
                   setSearchQuery('');
                   setFilterType('all');
                   setOnlyCurrentPage(false);
+                  setSelectedTagIds([]);
                 }}
-                className="mt-3 px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-sky-400 rounded transition-colors"
+                className="mt-3 px-2 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-sky-400 rounded transition-colors cursor-pointer"
               >
                 Reset filters
               </button>
