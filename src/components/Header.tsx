@@ -18,6 +18,7 @@ import {
   ChevronDown,
   GitCompareArrows,
   Info,
+  DownloadCloud,
 } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 import { GlobalFieldSearch } from './GlobalFieldSearch';
@@ -45,6 +46,7 @@ interface HeaderProps {
   onSwitchToStudioUI?: () => void;
   onLoadCanadaBookFund?: () => void;
   onLoadAttachedXfa?: () => void;
+  onOpenInstallApp?: () => void;
   onOpenProtocolHandler?: () => void;
   isProtocolHandlerActive?: boolean;
   hasUnsavedMetadataChanges?: boolean;
@@ -71,6 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSwitchToStudioUI,
   onLoadCanadaBookFund,
   onLoadAttachedXfa,
+  onOpenInstallApp,
   onOpenProtocolHandler,
   isProtocolHandlerActive = false,
   hasUnsavedMetadataChanges = false,
@@ -179,20 +182,15 @@ export const Header: React.FC<HeaderProps> = ({
             {onOpenProtocolHandler && (
               <button
                 onClick={onOpenProtocolHandler}
-                title="Configure Browser Default PDF & XFA Protocol Handler (web+pdf://, web+xfa://, .pdf takeover)"
-                className={`hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors shrink-0 cursor-pointer ${
+                title="Register AcroXFA as the default browser PDF & XFA handler (web+pdf://, web+xfa://, OS .pdf)"
+                className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                   isProtocolHandlerActive
                     ? 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-200 border-emerald-600/70'
                     : 'bg-slate-800 hover:bg-slate-700 text-sky-300 border-slate-700'
                 }`}
               >
-                <Globe className={`w-3.5 h-3.5 ${isProtocolHandlerActive ? 'text-emerald-400' : 'text-sky-400'}`} />
-                <span>Default PDF Handler</span>
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    isProtocolHandlerActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
-                  }`}
-                />
+                <Globe className={`w-3.5 h-3.5 shrink-0 ${isProtocolHandlerActive ? 'text-emerald-400' : 'text-sky-400'}`} />
+                <span>{isProtocolHandlerActive ? 'PDF Handler: ON' : 'Default PDF Handler'}</span>
               </button>
             )}
 
@@ -217,8 +215,8 @@ export const Header: React.FC<HeaderProps> = ({
               <span>{isExportingZip ? 'Zipping...' : 'Zip Assets'}</span>
             </button>
 
-            <div className="hidden sm:block">
-              <PWAInstallButton />
+            <div className="hidden sm:block shrink-0">
+              <PWAInstallButton onOpenInstallModal={onOpenInstallApp} />
             </div>
 
             {onOpenShortcuts && (
@@ -302,13 +300,30 @@ export const Header: React.FC<HeaderProps> = ({
                       </span>
                     </button>
                   )}
+                  {onOpenInstallApp && (
+                    <button
+                      onClick={() => {
+                        onOpenInstallApp();
+                        setToolsMenuOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-slate-800 flex items-center justify-between text-sky-300 cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <DownloadCloud className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Download / Install Web App</span>
+                      </span>
+                      <span className="text-[10px] font-mono bg-sky-950 px-1.5 py-0.5 rounded">
+                        PWA
+                      </span>
+                    </button>
+                  )}
                   {onOpenProtocolHandler && (
                     <button
                       onClick={() => {
                         onOpenProtocolHandler();
                         setToolsMenuOpen(false);
                       }}
-                      className="w-full text-left px-3 py-2 hover:bg-slate-800 flex items-center justify-between text-emerald-300"
+                      className="w-full text-left px-3 py-2 hover:bg-slate-800 flex items-center justify-between text-emerald-300 cursor-pointer"
                     >
                       <span className="flex items-center gap-2">
                         <Globe className="w-3.5 h-3.5 text-emerald-400" />
@@ -757,6 +772,36 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="text-[10px] text-slate-400">Packets &amp; XDP</div>
                 </div>
               </button>
+              {onOpenInstallApp && (
+                <button
+                  onClick={() => {
+                    onOpenInstallApp();
+                    setMobileMoreTabsOpen(false);
+                  }}
+                  className="p-3 rounded-xl bg-sky-950/60 hover:bg-sky-900/60 border border-sky-700/60 flex items-center gap-2.5 text-left cursor-pointer"
+                >
+                  <DownloadCloud className="w-4 h-4 text-sky-400 shrink-0" />
+                  <div>
+                    <div className="font-semibold text-sky-200">Download Web App</div>
+                    <div className="text-[10px] text-sky-300/80">PWA &amp; Desktop Bundle</div>
+                  </div>
+                </button>
+              )}
+              {onOpenProtocolHandler && (
+                <button
+                  onClick={() => {
+                    onOpenProtocolHandler();
+                    setMobileMoreTabsOpen(false);
+                  }}
+                  className="p-3 rounded-xl bg-emerald-950/60 hover:bg-emerald-900/60 border border-emerald-700/60 flex items-center gap-2.5 text-left cursor-pointer"
+                >
+                  <Globe className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div>
+                    <div className="font-semibold text-emerald-200">Default PDF Handler</div>
+                    <div className="text-[10px] text-emerald-300/80">Browser &amp; OS Registration</div>
+                  </div>
+                </button>
+              )}
             </div>
           </div>
         </div>

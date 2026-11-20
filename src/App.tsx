@@ -34,7 +34,7 @@ import { createSampleXfaPdf, createSampleMediaPdf, createCanadaBookFundXfaPdf } 
 import { AcrobatWorkspace } from './components/AcrobatWorkspace';
 import { SmartFormAssistant } from './components/SmartFormAssistant';
 import { PrintScaleModal } from './components/PrintScaleModal';
-import { PdfProtocolHandlerModal } from './components/PdfProtocolHandlerModal';
+import { PdfProtocolHandlerModal, AppHandlerModalSection } from './components/PdfProtocolHandlerModal';
 import {
   PdfProtocolSettings,
   loadPdfProtocolSettings,
@@ -129,9 +129,14 @@ export default function App() {
   const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
   const [isPrintScaleModalOpen, setIsPrintScaleModalOpen] = useState(false);
   const [isProtocolModalOpen, setIsProtocolModalOpen] = useState(false);
+  const [protocolModalSection, setProtocolModalSection] = useState<AppHandlerModalSection>('install');
   const [protocolSettings, setProtocolSettings] = useState<PdfProtocolSettings>(() =>
     loadPdfProtocolSettings()
   );
+  const openAppHandlerModal = useCallback((section: AppHandlerModalSection) => {
+    setProtocolModalSection(section);
+    setIsProtocolModalOpen(true);
+  }, []);
   const [urlModalInput, setUrlModalInput] = useState('https://www.canada.ca/content/dam/pch/documents/services/funding/book-fund/cBF-FinRepDatFrm-eng.pdf');
 
   useEffect(() => {
@@ -1452,7 +1457,8 @@ export default function App() {
           history={formHistory.history}
           currentIndex={formHistory.currentIndex}
           jumpToHistoryIndex={formHistory.jumpToHistoryIndex}
-          onOpenProtocolHandler={() => setIsProtocolModalOpen(true)}
+          onOpenInstallApp={() => openAppHandlerModal('install')}
+          onOpenProtocolHandler={() => openAppHandlerModal('overview')}
           isProtocolHandlerActive={protocolSettings.enabled}
           onApplyPageOrganization={handleApplyPageOrganization}
           onLoadConvertedPdf={loadPdfData}
@@ -1482,6 +1488,7 @@ export default function App() {
         <PdfProtocolHandlerModal
           isOpen={isProtocolModalOpen}
           onClose={() => setIsProtocolModalOpen(false)}
+          initialSection={protocolModalSection}
           settings={protocolSettings}
           onUpdateSettings={handleUpdateProtocolSettings}
           onTriggerProtocolUri={handleTriggerProtocolUri}
@@ -1569,7 +1576,8 @@ export default function App() {
         onSwitchToStudioUI={() => setUiMode('studio')}
         onLoadCanadaBookFund={handleLoadCanadaBookFund}
         onLoadAttachedXfa={handleLoadAttachedXfa}
-        onOpenProtocolHandler={() => setIsProtocolModalOpen(true)}
+        onOpenInstallApp={() => openAppHandlerModal('install')}
+        onOpenProtocolHandler={() => openAppHandlerModal('overview')}
         isProtocolHandlerActive={protocolSettings.enabled}
         hasUnsavedMetadataChanges={hasUnsavedMetadataChanges}
       />
@@ -1928,6 +1936,7 @@ export default function App() {
       <PdfProtocolHandlerModal
         isOpen={isProtocolModalOpen}
         onClose={() => setIsProtocolModalOpen(false)}
+        initialSection={protocolModalSection}
         settings={protocolSettings}
         onUpdateSettings={handleUpdateProtocolSettings}
         onTriggerProtocolUri={handleTriggerProtocolUri}

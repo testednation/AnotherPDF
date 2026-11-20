@@ -47,6 +47,7 @@ import {
   GitCompareArrows,
   Tag,
   Info,
+  DownloadCloud,
 } from 'lucide-react';
 import { XFAField, XFASubform, ExtractedResourceManifest, EditablePdfMetadata } from '../types/pdf';
 import { validateAllFields } from '../utils/validationEngine';
@@ -67,6 +68,7 @@ import { PageOrganizerModal } from './PageOrganizerModal';
 import { RegularPdfConvertModal } from './RegularPdfConvertModal';
 import { PrintImageGeneratorModal } from './PrintImageGeneratorModal';
 import { GlobalFieldSearch } from './GlobalFieldSearch';
+import { PWAInstallButton } from './PWAInstallButton';
 import { PageOrganizationResult } from '../utils/pageOrganizer';
 import { CustomFieldRegexRule } from '../utils/customValidationRules';
 import {
@@ -116,6 +118,7 @@ interface AcrobatWorkspaceProps {
   history?: HistoryEntry[];
   currentIndex?: number;
   jumpToHistoryIndex?: (index: number) => void;
+  onOpenInstallApp?: () => void;
   onOpenProtocolHandler?: () => void;
   isProtocolHandlerActive?: boolean;
   onApplyPageOrganization?: (
@@ -184,6 +187,7 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
   history = [],
   currentIndex = -1,
   jumpToHistoryIndex,
+  onOpenInstallApp,
   onOpenProtocolHandler,
   isProtocolHandlerActive = false,
   onApplyPageOrganization,
@@ -407,13 +411,32 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                     <span>Open from Web URL...</span>
                   </span>
                 </button>
+                {onOpenInstallApp && (
+                  <button
+                    onClick={() => {
+                      onOpenInstallApp();
+                      setMobileSamplesOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-[#333] flex items-center justify-between text-sky-300 border-t border-[#383838] mt-1 pt-2 cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2">
+                      <DownloadCloud className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Download / Install Web App</span>
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-950 text-sky-300">
+                      PWA
+                    </span>
+                  </button>
+                )}
                 {onOpenProtocolHandler && (
                   <button
                     onClick={() => {
                       onOpenProtocolHandler();
                       setMobileSamplesOpen(false);
                     }}
-                    className="w-full text-left px-3 py-2 hover:bg-[#333] flex items-center justify-between text-emerald-300 border-t border-[#383838] mt-1 pt-2"
+                    className={`w-full text-left px-3 py-2 hover:bg-[#333] flex items-center justify-between text-emerald-300 cursor-pointer ${
+                      onOpenInstallApp ? '' : 'border-t border-[#383838] mt-1 pt-2'
+                    }`}
                   >
                     <span className="flex items-center gap-2">
                       <Globe className="w-3.5 h-3.5 text-emerald-400" />
@@ -428,23 +451,24 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
             )}
           </div>
 
+          {onOpenInstallApp && (
+            <div className="hidden sm:inline-flex shrink-0">
+              <PWAInstallButton compact onOpenInstallModal={onOpenInstallApp} />
+            </div>
+          )}
+
           {onOpenProtocolHandler && (
             <button
               onClick={onOpenProtocolHandler}
-              className={`hidden xl:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-medium border transition-colors cursor-pointer ${
+              className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-medium border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 isProtocolHandlerActive
                   ? 'bg-emerald-950/90 hover:bg-emerald-900 text-emerald-200 border-emerald-600/80'
                   : 'bg-slate-800 hover:bg-slate-700 text-sky-300 border-slate-700'
               }`}
-              title="Take over default browser PDF & XFA protocol (web+pdf://, web+xfa://, .pdf links)"
+              title="Register AcroXFA as the default browser PDF & XFA handler (web+pdf://, web+xfa://, OS .pdf)"
             >
-              <Globe className={`w-3 h-3 ${isProtocolHandlerActive ? 'text-emerald-400' : 'text-sky-400'}`} />
-              <span>Default PDF Handler</span>
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isProtocolHandlerActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
-                }`}
-              />
+              <Globe className={`w-3 h-3 shrink-0 ${isProtocolHandlerActive ? 'text-emerald-400' : 'text-sky-400'}`} />
+              <span>{isProtocolHandlerActive ? 'PDF Handler: ON' : 'Default PDF Handler'}</span>
             </button>
           )}
 
@@ -569,6 +593,18 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                   <span>Open from Web URL...</span>
                   <span className="text-[10px] font-mono text-slate-500">URL</span>
                 </button>
+                {onOpenInstallApp && (
+                  <button
+                    onClick={() => {
+                      onOpenInstallApp();
+                      setActiveMenu(null);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-[#3a3a3a] text-sky-300 flex items-center justify-between cursor-pointer"
+                  >
+                    <span>Download / Install Web App...</span>
+                    <span className="text-[10px] font-mono text-sky-400">App</span>
+                  </button>
+                )}
                 {onOpenProtocolHandler && (
                   <button
                     onClick={() => {
@@ -577,7 +613,7 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                     }}
                     className="w-full text-left px-3 py-1.5 hover:bg-[#3a3a3a] text-emerald-300 flex items-center justify-between cursor-pointer"
                   >
-                    <span>Default Browser PDF Protocol...</span>
+                    <span>Register as Default PDF Handler...</span>
                     <span className="text-[10px] font-mono text-emerald-400">
                       {isProtocolHandlerActive ? 'ON' : 'SET'}
                     </span>
@@ -2051,18 +2087,34 @@ export const AcrobatWorkspace: React.FC<AcrobatWorkspaceProps> = ({
                 </div>
               </button>
 
+              {onOpenInstallApp && (
+                <button
+                  onClick={() => {
+                    onOpenInstallApp();
+                    setMobileToolsSheetOpen(false);
+                  }}
+                  className="p-3 rounded-xl bg-sky-950/60 hover:bg-sky-900/60 border border-sky-700/60 flex items-center gap-2.5 text-left cursor-pointer"
+                >
+                  <DownloadCloud className="w-5 h-5 text-sky-400 shrink-0" />
+                  <div>
+                    <div className="font-semibold text-sky-200">Download Web App</div>
+                    <div className="text-[10px] text-sky-300/80">PWA &amp; Desktop Bundle</div>
+                  </div>
+                </button>
+              )}
+
               {onOpenProtocolHandler && (
                 <button
                   onClick={() => {
                     onOpenProtocolHandler();
                     setMobileToolsSheetOpen(false);
                   }}
-                  className="p-3 rounded-xl bg-[#2c2c2c] hover:bg-[#363636] border border-[#3e3e3e] flex items-center gap-2.5 text-left"
+                  className="p-3 rounded-xl bg-[#2c2c2c] hover:bg-[#363636] border border-[#3e3e3e] flex items-center gap-2.5 text-left cursor-pointer"
                 >
                   <Globe className="w-5 h-5 text-emerald-400 shrink-0" />
                   <div>
-                    <div className="font-semibold text-slate-100">PDF Protocol</div>
-                    <div className="text-[10px] text-slate-400">Browser Default Handler</div>
+                    <div className="font-semibold text-slate-100">Default PDF Handler</div>
+                    <div className="text-[10px] text-slate-400">Browser &amp; OS Registration</div>
                   </div>
                 </button>
               )}

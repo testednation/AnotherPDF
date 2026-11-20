@@ -28,6 +28,8 @@ import { validateAllFields, quickFixFieldValue } from '../utils/validationEngine
 import { HistoryEntry } from '../hooks/useFormHistory';
 import { getFieldTooltipGuide } from '../utils/xfaTooltipHelper';
 import { FieldTooltipPopover } from './FieldTooltipPopover';
+import { SmartSuggestInput } from './SmartSuggestInput';
+import { SmartSuggestStore } from '../utils/fieldSmartSuggest';
 
 export interface BeginnerStep {
   id: string;
@@ -51,6 +53,9 @@ interface BeginnerFormWizardProps {
   currentIndex: number;
   onExportPdf?: () => void;
   onSwitchToAdvanced?: () => void;
+  smartSuggestStore?: SmartSuggestStore;
+  onCommitSmartValue?: (field: XFAField, val: string) => void;
+  onDeleteSmartHistoryEntry?: (entryId: string) => void;
 }
 
 export const BeginnerFormWizard: React.FC<BeginnerFormWizardProps> = ({
@@ -67,6 +72,9 @@ export const BeginnerFormWizard: React.FC<BeginnerFormWizardProps> = ({
   currentIndex,
   onExportPdf,
   onSwitchToAdvanced,
+  smartSuggestStore,
+  onCommitSmartValue,
+  onDeleteSmartHistoryEntry,
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [showGuide, setShowGuide] = useState(false);
@@ -650,22 +658,64 @@ export const BeginnerFormWizard: React.FC<BeginnerFormWizardProps> = ({
                     </select>
                   ) : field.type === 'signature' ? (
                     <div className="space-y-2">
-                      <input
-                        type="text"
-                        id={`input_${field.id}`}
-                        value={field.value || ''}
-                        onChange={e => onFieldValueChange(field.id, e.target.value)}
-                        onFocus={() => setFocusedFieldId(field.id)}
-                        onBlur={() => setFocusedFieldId(null)}
-                        placeholder="Type full legal name to apply electronic signature..."
-                        disabled={field.readOnly}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-serif italic text-sky-200 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
-                      />
+                      {smartSuggestStore ? (
+                        <SmartSuggestInput
+                          field={field}
+                          allFields={allFields}
+                          store={smartSuggestStore}
+                          id={`input_${field.id}`}
+                          inputType="text"
+                          value={field.value || ''}
+                          onChange={val => onFieldValueChange(field.id, val)}
+                          onCommitValue={onCommitSmartValue}
+                          onDeleteHistoryEntry={onDeleteSmartHistoryEntry}
+                          onFocusExtra={() => setFocusedFieldId(field.id)}
+                          onBlurExtra={() => setFocusedFieldId(null)}
+                          placeholder="Type full legal name to apply electronic signature..."
+                          disabled={field.readOnly}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-serif italic text-sky-200 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          id={`input_${field.id}`}
+                          value={field.value || ''}
+                          onChange={e => onFieldValueChange(field.id, e.target.value)}
+                          onFocus={() => setFocusedFieldId(field.id)}
+                          onBlur={() => setFocusedFieldId(null)}
+                          placeholder="Type full legal name to apply electronic signature..."
+                          disabled={field.readOnly}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-serif italic text-sky-200 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500"
+                        />
+                      )}
                       <div className="flex items-center gap-2 text-[10px] text-slate-400">
                         <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                         <span>Applying your full name electronically certifies this document under Canadian Uniform Electronic Commerce standards.</span>
                       </div>
                     </div>
+                  ) : smartSuggestStore ? (
+                    <SmartSuggestInput
+                      field={field}
+                      allFields={allFields}
+                      store={smartSuggestStore}
+                      id={`input_${field.id}`}
+                      inputType={field.type === 'multiline' ? 'textarea' : field.type === 'date' ? 'date' : 'text'}
+                      value={field.value || ''}
+                      onChange={val => onFieldValueChange(field.id, val)}
+                      onCommitValue={onCommitSmartValue}
+                      onDeleteHistoryEntry={onDeleteSmartHistoryEntry}
+                      onFocusExtra={() => setFocusedFieldId(field.id)}
+                      onBlurExtra={() => setFocusedFieldId(null)}
+                      placeholder={`e.g. ${field.type === 'numeric' ? '125,000' : 'Enter here...'}`}
+                      disabled={field.readOnly}
+                      className={`w-full bg-slate-950 border rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none transition-colors ${
+                        field.type === 'numeric' ? 'font-mono tabular-nums' : ''
+                      } ${
+                        hasError
+                          ? 'border-rose-600 focus:ring-1 focus:ring-rose-500'
+                          : 'border-slate-700 focus:border-sky-500 focus:ring-1 focus:ring-sky-500'
+                      } ${field.readOnly ? 'bg-slate-900/60 text-slate-500 cursor-not-allowed' : ''}`}
+                    />
                   ) : (
                     <div className="relative">
                       <input

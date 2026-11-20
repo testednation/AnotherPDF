@@ -59,6 +59,19 @@ import { useFormHistory, HistoryEntry } from '../hooks/useFormHistory';
 import { BeginnerFormWizard } from './BeginnerFormWizard';
 import { FieldTooltipPopover } from './FieldTooltipPopover';
 import { SmartFormAssistant } from './SmartFormAssistant';
+import { SmartSuggestInput } from './SmartSuggestInput';
+import { SmartSuggestPanel } from './SmartSuggestPanel';
+import {
+  SmartSuggestStore,
+  BusinessEntityProfile,
+  loadSmartSuggestStore,
+  saveSmartSuggestStore,
+  recordLearnedFieldValue,
+  removeLearnedEntry,
+  clearLearnedEntries,
+  createCustomProfileFromFields,
+  classifyFieldEntityCategory,
+} from '../utils/fieldSmartSuggest';
 
 export interface BulkFieldUpdates {
   readOnly?: boolean;
@@ -143,6 +156,16 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
     'all' | 'date' | 'numeric' | 'email' | 'phone_postal' | 'invalid' | 'valid'
   >('all');
   const [highlightByDataType, setHighlightByDataType] = useState<boolean>(true);
+
+  // Field Smart-Suggest State (persisted learned patterns & business entity profiles)
+  const [smartSuggestStore, setSmartSuggestStore] = useState<SmartSuggestStore>(() =>
+    loadSmartSuggestStore()
+  );
+  const [showSmartSuggestPanel, setShowSmartSuggestPanel] = useState(false);
+
+  useEffect(() => {
+    saveSmartSuggestStore(smartSuggestStore);
+  }, [smartSuggestStore]);
 
   // Internal history tracker fallback if not provided by parent
   const internalHistory = useFormHistory({
@@ -447,6 +470,72 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
     onFieldValueChange(fieldId, newValue);
   };
 
+  // Field Smart-Suggest Handlers
+  const showEditorNotice = (msg: string) => {
+    setValidationToast(msg);
+    setTimeout(() => setValidationToast(null), 3500);
+  };
+
+  const handleCommitSmartValue = (field: XFAField, val: string) => {
+    setSmartSuggestStore(prev => recordLearnedFieldValue(prev, field, val));
+  };
+
+  const handleToggleSmartSuggest = () => {
+    setSmartSuggestStore(prev => ({ ...prev, enabled: !prev.enabled }));
+  };
+
+  const handleSelectActiveProfile = (profileId: string | null) => {
+    setSmartSuggestStore(prev => ({ ...prev, activeProfileId: profileId }));
+  };
+
+  const handleApplyProfileToEmptyFields = (profile: BusinessEntityProfile) => {
+    let applied = 0;
+    allFields.forEach(f => {
+      if (f.readOnly || f.type === 'check' || f.type === 'choice') return;
+      const isEmpty = !f.value || f.value.trim() === '' || f.value === '0';
+      if (!isEmpty) return;
+      const cat = classifyFieldEntityCategory(f);
+      const suggested = profile.values[cat];
+      if (suggested) {
+        handleFieldChange(f.id, suggested);
+        applied++;
+      }
+    });
+    if (applied > 0) {
+      showEditorNotice(`Applied "${profile.name}" to ${applied} empty ${applied === 1 ? 'field' : 'fields'}.`);
+    } else {
+      showEditorNotice(`All fields matching "${profile.name}" already contain values.`);
+    }
+  };
+
+  const handleSaveCurrentFormAsProfile = (profileName: string) => {
+    const created = createCustomProfileFromFields(profileName, allFields);
+    if (!created) return;
+    setSmartSuggestStore(prev => ({
+      ...prev,
+      customProfiles: [created, ...prev.customProfiles],
+      activeProfileId: created.id,
+    }));
+    showEditorNotice(`Saved "${created.name}" as a reusable Business Entity profile.`);
+  };
+
+  const handleDeleteCustomProfile = (profileId: string) => {
+    setSmartSuggestStore(prev => ({
+      ...prev,
+      customProfiles: prev.customProfiles.filter(p => p.id !== profileId),
+      activeProfileId: prev.activeProfileId === profileId ? null : prev.activeProfileId,
+    }));
+  };
+
+  const handleRemoveLearnedEntry = (entryId: string) => {
+    setSmartSuggestStore(prev => removeLearnedEntry(prev, entryId));
+  };
+
+  const handleClearAllLearned = () => {
+    setSmartSuggestStore(prev => clearLearnedEntries(prev));
+    showEditorNotice('Cleared locally learned field patterns.');
+  };
+
   if (!hasXfa || subforms.length === 0) {
     return (
       <div className="max-w-4xl mx-auto py-12 px-6">
@@ -510,20 +599,53 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => setShowSmartSuggestPanel(prev => !prev)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap cursor-pointer ${
+                showSmartSuggestPanel
+                  ? 'bg-sky-500/20 text-sky-300 border-sky-500/50'
+                  : smartSuggestStore.enabled
+                  ? 'bg-slate-800 hover:bg-slate-700 text-sky-300 border-slate-700'
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+              }`}
+              title="Configure Field Smart-Suggest autocomplete patterns and business entity profiles"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+              <span>Smart-Suggest</span>
+              <span className="text-[10px] font-mono text-slate-400">
+                {smartSuggestStore.enabled ? 'ON' : 'OFF'}
+              </span>
+            </button>
+            <span className="text-[11px] text-slate-400 font-mono hidden md:inline">
               Press <kbd className="px-1.5 py-0.5 bg-slate-800 border border-slate-700 rounded text-slate-300">Alt+B</kbd> to toggle view
             </span>
             {onExportPdf && (
               <button
                 onClick={onExportPdf}
-                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors shadow-xs"
+                className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors shadow-xs whitespace-nowrap"
               >
                 Save Filled PDF
               </button>
             )}
           </div>
         </div>
+
+        {showSmartSuggestPanel && (
+          <SmartSuggestPanel
+            store={smartSuggestStore}
+            allFields={allFields}
+            onClose={() => setShowSmartSuggestPanel(false)}
+            onToggleEnabled={handleToggleSmartSuggest}
+            onSelectActiveProfile={handleSelectActiveProfile}
+            onApplyProfileToEmptyFields={handleApplyProfileToEmptyFields}
+            onSaveCurrentFormAsProfile={handleSaveCurrentFormAsProfile}
+            onDeleteCustomProfile={handleDeleteCustomProfile}
+            onRemoveLearnedEntry={handleRemoveLearnedEntry}
+            onClearAllLearned={handleClearAllLearned}
+          />
+        )}
 
         <BeginnerFormWizard
           subforms={subforms}
@@ -539,6 +661,9 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
           currentIndex={activeCurrentIndex}
           onExportPdf={onExportPdf}
           onSwitchToAdvanced={() => setEditorMode('advanced')}
+          smartSuggestStore={smartSuggestStore}
+          onCommitSmartValue={handleCommitSmartValue}
+          onDeleteSmartHistoryEntry={handleRemoveLearnedEntry}
         />
       </div>
     );
@@ -652,6 +777,26 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
             </button>
           )}
 
+          {/* Field Smart-Suggest Toggle & Memory Drawer Button */}
+          <button
+            type="button"
+            onClick={() => setShowSmartSuggestPanel(prev => !prev)}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md border transition-colors whitespace-nowrap cursor-pointer ${
+              showSmartSuggestPanel
+                ? 'bg-sky-500/20 text-sky-200 border-sky-500/60'
+                : smartSuggestStore.enabled
+                ? 'bg-slate-800 hover:bg-slate-700 text-sky-300 border-slate-700'
+                : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+            }`}
+            title="Field Smart-Suggest: manage learned data patterns and business entity autocomplete profiles"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+            <span>Smart-Suggest</span>
+            <span className="text-[10px] font-mono tabular-nums text-slate-400">
+              {smartSuggestStore.enabled ? `ON · ${smartSuggestStore.entries.length}` : 'OFF'}
+            </span>
+          </button>
+
           {/* AI Smart Form Assistant Toggle Button */}
           <button
             onClick={() => setIsAssistantOpen(prev => !prev)}
@@ -662,7 +807,7 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
             }`}
             title="Smart Form Assistant: AI Autofill, Cross-field Inference, and Industry Profiles"
           >
-            <Sparkles className="w-3.5 h-3.5 text-purple-300 animate-pulse" />
+            <Sparkles className="w-3.5 h-3.5 text-purple-300" />
             <span>AI Assistant</span>
           </button>
 
@@ -710,6 +855,22 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Field Smart-Suggest Business Entities & Learned Patterns Drawer */}
+      {showSmartSuggestPanel && (
+        <SmartSuggestPanel
+          store={smartSuggestStore}
+          allFields={allFields}
+          onClose={() => setShowSmartSuggestPanel(false)}
+          onToggleEnabled={handleToggleSmartSuggest}
+          onSelectActiveProfile={handleSelectActiveProfile}
+          onApplyProfileToEmptyFields={handleApplyProfileToEmptyFields}
+          onSaveCurrentFormAsProfile={handleSaveCurrentFormAsProfile}
+          onDeleteCustomProfile={handleDeleteCustomProfile}
+          onRemoveLearnedEntry={handleRemoveLearnedEntry}
+          onClearAllLearned={handleClearAllLearned}
+        />
+      )}
 
       {/* 10-Step History Log Dialog / Drawer */}
       {showHistoryModal && (
@@ -1290,6 +1451,10 @@ export const XfaFormEditor: React.FC<XfaFormEditorProps> = ({
             onToggleSubform={handleToggleSubform}
             fieldErrorMap={validationReport.fieldErrorMap}
             highlightByDataType={highlightByDataType}
+            allFields={allFields}
+            smartSuggestStore={smartSuggestStore}
+            onCommitSmartValue={handleCommitSmartValue}
+            onDeleteSmartHistoryEntry={handleRemoveLearnedEntry}
           />
         ))}
 
@@ -1516,6 +1681,10 @@ interface SubformSectionProps {
   onToggleSubform: (subform: XFASubform) => void;
   fieldErrorMap: Map<string, ValidationError[]>;
   highlightByDataType?: boolean;
+  allFields: XFAField[];
+  smartSuggestStore: SmartSuggestStore;
+  onCommitSmartValue: (field: XFAField, val: string) => void;
+  onDeleteSmartHistoryEntry: (entryId: string) => void;
 }
 
 const SubformSection: React.FC<SubformSectionProps> = ({
@@ -1531,6 +1700,10 @@ const SubformSection: React.FC<SubformSectionProps> = ({
   onToggleSubform,
   fieldErrorMap,
   highlightByDataType = true,
+  allFields,
+  smartSuggestStore,
+  onCommitSmartValue,
+  onDeleteSmartHistoryEntry,
 }) => {
   // Compute subform selection state
   const subformFieldIds = useMemo(() => {
@@ -1638,6 +1811,10 @@ const SubformSection: React.FC<SubformSectionProps> = ({
                   onToggleSelect={() => onToggleField(field.id)}
                   issues={fieldErrorMap.get(field.id)}
                   highlightByDataType={highlightByDataType}
+                  allFields={allFields}
+                  smartSuggestStore={smartSuggestStore}
+                  onCommitSmartValue={onCommitSmartValue}
+                  onDeleteSmartHistoryEntry={onDeleteSmartHistoryEntry}
                 />
               ))}
             </div>
@@ -1659,6 +1836,10 @@ const SubformSection: React.FC<SubformSectionProps> = ({
                 onToggleSubform={onToggleSubform}
                 fieldErrorMap={fieldErrorMap}
                 highlightByDataType={highlightByDataType}
+                allFields={allFields}
+                smartSuggestStore={smartSuggestStore}
+                onCommitSmartValue={onCommitSmartValue}
+                onDeleteSmartHistoryEntry={onDeleteSmartHistoryEntry}
               />
             </div>
           ))}
@@ -1679,6 +1860,10 @@ interface FieldInputControlProps {
   onToggleSelect: () => void;
   issues?: ValidationError[];
   highlightByDataType?: boolean;
+  allFields: XFAField[];
+  smartSuggestStore: SmartSuggestStore;
+  onCommitSmartValue: (field: XFAField, val: string) => void;
+  onDeleteSmartHistoryEntry: (entryId: string) => void;
 }
 
 const FieldInputControl: React.FC<FieldInputControlProps> = ({
@@ -1692,6 +1877,10 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
   onToggleSelect,
   issues = [],
   highlightByDataType = true,
+  allFields,
+  smartSuggestStore,
+  onCommitSmartValue,
+  onDeleteSmartHistoryEntry,
 }) => {
   const isFullWidth = field.type === 'multiline' || field.type === 'signature';
   const hasError = issues.some(i => i.severity === 'error');
@@ -1908,34 +2097,52 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
             )}
           </select>
         ) : field.type === 'multiline' ? (
-          <textarea
+          <SmartSuggestInput
+            field={field}
+            allFields={allFields}
+            store={smartSuggestStore}
+            inputType="textarea"
             rows={3}
             value={field.value}
             disabled={field.readOnly}
-            onChange={e => onChange(e.target.value)}
+            onChange={onChange}
+            onCommitValue={onCommitSmartValue}
+            onDeleteHistoryEntry={onDeleteSmartHistoryEntry}
             placeholder={field.readOnly ? '(Read-only field)' : 'Enter detailed notes or disclosures...'}
             className={`w-full bg-slate-900/80 border rounded-lg px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 ${activeInputClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
           />
         ) : field.type === 'date' ? (
           <div className="relative">
-            <Calendar className="w-3.5 h-3.5 text-indigo-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="date"
+            <Calendar className="w-3.5 h-3.5 text-indigo-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
+            <SmartSuggestInput
+              field={field}
+              allFields={allFields}
+              store={smartSuggestStore}
+              inputType="date"
               value={field.value}
               disabled={field.readOnly}
-              onChange={e => onChange(e.target.value)}
+              onChange={onChange}
+              onCommitValue={onCommitSmartValue}
+              onDeleteHistoryEntry={onDeleteSmartHistoryEntry}
+              leftPaddingClass="pl-9"
               className={`w-full bg-slate-900/80 border rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:ring-1 ${activeInputClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
             />
           </div>
         ) : field.type === 'numeric' ? (
           <div className="relative">
-            <Hash className="w-3 h-3 text-amber-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
+            <Hash className="w-3 h-3 text-amber-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
+            <SmartSuggestInput
+              field={field}
+              allFields={allFields}
+              store={smartSuggestStore}
+              inputType="text"
               value={field.value}
               disabled={field.readOnly}
-              onChange={e => onChange(e.target.value)}
+              onChange={onChange}
+              onCommitValue={onCommitSmartValue}
+              onDeleteHistoryEntry={onDeleteSmartHistoryEntry}
               placeholder="0.00"
+              leftPaddingClass="pl-8"
               className={`w-full bg-slate-900/80 border rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-100 font-mono tabular-nums focus:outline-none focus:ring-1 ${activeInputClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
             />
           </div>
@@ -1953,11 +2160,16 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
                 </span>
               )}
             </div>
-            <input
-              type="text"
+            <SmartSuggestInput
+              field={field}
+              allFields={allFields}
+              store={smartSuggestStore}
+              inputType="text"
               value={field.value}
               disabled={field.readOnly}
-              onChange={e => onChange(e.target.value)}
+              onChange={onChange}
+              onCommitValue={onCommitSmartValue}
+              onDeleteHistoryEntry={onDeleteSmartHistoryEntry}
               placeholder={field.readOnly ? '(Read-only signature)' : 'Type legal signatory name...'}
               className={`w-full bg-slate-950 border rounded-md px-3 py-1.5 text-xs font-serif text-sky-200 placeholder-slate-600 focus:outline-none ${activeInputClass} ${field.readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
             />
@@ -1965,17 +2177,27 @@ const FieldInputControl: React.FC<FieldInputControlProps> = ({
         ) : (
           <div className="relative">
             {dataTypeInfo.type === 'email' ? (
-              <Mail className="w-3.5 h-3.5 text-cyan-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Mail className="w-3.5 h-3.5 text-cyan-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
             ) : dataTypeInfo.type === 'phone' ? (
-              <Phone className="w-3.5 h-3.5 text-teal-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Phone className="w-3.5 h-3.5 text-teal-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
             ) : dataTypeInfo.type === 'postal_code' ? (
-              <MapPin className="w-3.5 h-3.5 text-teal-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <MapPin className="w-3.5 h-3.5 text-teal-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
             ) : null}
-            <input
-              type="text"
+            <SmartSuggestInput
+              field={field}
+              allFields={allFields}
+              store={smartSuggestStore}
+              inputType="text"
               value={field.value}
               disabled={field.readOnly}
-              onChange={e => onChange(e.target.value)}
+              onChange={onChange}
+              onCommitValue={onCommitSmartValue}
+              onDeleteHistoryEntry={onDeleteSmartHistoryEntry}
+              leftPaddingClass={
+                dataTypeInfo.type === 'email' || dataTypeInfo.type === 'phone' || dataTypeInfo.type === 'postal_code'
+                  ? 'pl-9'
+                  : 'px-3'
+              }
               placeholder={
                 field.readOnly
                   ? '(Read-only field)'

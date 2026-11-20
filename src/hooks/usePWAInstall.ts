@@ -1,35 +1,47 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { detectBrowserEnvironment, BrowserEnvironmentInfo } from '../utils/webAppBundleExporter';
 
-interface BeforeInstallPromptEvent extends Event {
+export interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
+declare global {
+  interface Window {
+    __acroxfaDeferredInstallPrompt?: BeforeInstallPromptEvent | null;
+  }
+}
+
 export function usePWAInstall() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(() => {
+    if (typeof window !== 'undefined' && window.__acroxfaDeferredInstallPrompt) {
+      return window.__acroxfaDeferredInstallPrompt;
+    }
+    return null;
+  });
+  const [env, setEnv] = useState<BrowserEnvironmentInfo>(() => detectBrowserEnvironment());
+  const [isInstalled, setIsInstalled] = useState<boolean>(() => env.isStandalone);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Detect standalone mode (already installed PWA)
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-    setIsInstalled(isStandalone);
+    const currentEnv = detectBrowserEnvironment();
+    setEnv(currentEnv);
+    setIsInstalled(currentEnv.isStandalone);
 
-    // Detect iOS devices
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
-    setIsIOS(isIOSDevice);
+    if (window.__acroxfaDeferredInstallPrompt) {
+      setDeferredPrompt(window.__acroxfaDeferredInstallPrompt);
+    }
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      const promptEvent = e as BeforeInstallPromptEvent;
+      window.__acroxfaDeferredInstallPrompt = promptEvent;
+      setDeferredPrompt(promptEvent);
     };
 
     const handleAppInstalled = () => {
+      window.__acroxfaDeferredInstallPrompt = null;
       setIsInstalled(true);
       setDeferredPrompt(null);
     };
@@ -43,22 +55,25 @@ export function usePWAInstall() {
     };
   }, []);
 
-  const install = async () => {
-    if (!deferredPrompt) return false;
-    await deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
+  const install = useCallback(async () => {
+    const activePrompt = deferredPrompt || window.__acroxfaDeferredInstallPrompt;
+    if (!activePrompt) return false;
+    await activePrompt.prompt();
+    const { outcome } = await activePrompt.userChoice;
     if (outcome === 'accepted') {
+      window.__acroxfaDeferredInstallPrompt = null;
       setIsInstalled(true);
       setDeferredPrompt(null);
       return true;
     }
     return false;
-  };
+  }, [deferredPrompt]);
 
   return {
     isInstallable: !!deferredPrompt,
     isInstalled,
-    isIOS,
+    isIOS: env.os === 'ios',
+    env,
     install,
   };
 }
